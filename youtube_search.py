@@ -41,13 +41,25 @@ class YouTubeSearcher:
         """
         # Query variations to detect different types of usage
         query_variations = [
+            # Original comprehensive queries
             f"{song_name} {artist_name}",
             f"{song_name} {artist_name} cover",
             f"{song_name} {artist_name} live",
             f"{song_name} {artist_name} performance",
             f"{song_name} {artist_name} remix",
             f"{song_name} {artist_name} karaoke",
-            f"{song_name} {artist_name} band"
+            f"{song_name} {artist_name} band",
+            
+            # Cover-specific queries (NEW)
+            f"{song_name} cover by",              # "Song cover by [creator]"
+            f"{song_name} acoustic cover",        # Acoustic versions
+            f"{song_name} {artist_name} tribute", # Tribute videos
+            
+            # Live performance queries (NEW)
+            f"{song_name} live at",               # "Live at venue" format
+            f"{song_name} live performance",       # Explicit performance tag
+            f"{song_name} concert",                # Concert footage
+            f"{song_name} full concert"            # Full show recordings
         ]
         
         all_videos = []
