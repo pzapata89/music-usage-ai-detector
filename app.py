@@ -269,15 +269,15 @@ def perform_search(song_name: str, artist_name: str):
         status_text = st.empty()
         
         # Buscar en YouTube
-        status_text.text("🔍 Buscando en YouTube...")
+        status_text.text("🔍 Buscando en YouTube (múltiples consultas)...")
         progress_bar.progress(20)
-        youtube_results = youtube_searcher.search_videos(song_name, artist_name, max_results=10)
+        youtube_results = youtube_searcher.search_videos(song_name, artist_name, max_results=100)
         formatted_youtube = format_youtube_results(youtube_results)
         
         # Buscar en la web
-        status_text.text("🌐 Buscando en la web...")
+        status_text.text(f"🌐 Buscando en la web... ({len(formatted_youtube)} resultados de YouTube encontrados)")
         progress_bar.progress(40)
-        web_results = web_searcher.search_web(song_name, artist_name, num_results=10)
+        web_results = web_searcher.search_web(song_name, artist_name, max_results=60)
         formatted_web = format_web_results(web_results)
         
         # Análisis con IA
@@ -319,6 +319,8 @@ def perform_search(song_name: str, artist_name: str):
         st.session_state.search_results = {
             'youtube': classified_youtube,
             'web': classified_web,
+            'youtube_count': len(classified_youtube),
+            'web_count': len(classified_web),
             'summary': summary,
             'ai_report': ai_report,
             'high_risk_count': high_risk_count,
@@ -361,7 +363,9 @@ def display_results():
             results.get('song_name', 'Desconocida'),
             results.get('artist_name', 'Desconocido'),
             results.get('high_risk_count', 0),
-            results.get('medium_risk_count', 0)
+            results.get('medium_risk_count', 0),
+            results.get('youtube_count', 0),
+            results.get('web_count', 0)
         )
     
     # Mostrar resultados de YouTube
@@ -374,19 +378,34 @@ def display_results():
         st.markdown("## 🌐 Resultados de la Web")
         display_result_cards(results['web'], 'web')
 
-def display_summary(summary: Dict, song_name: str = "", artist_name: str = "", high_risk: int = 0, medium_risk: int = 0):
+def display_summary(summary: Dict, song_name: str = "", artist_name: str = "", 
+                    high_risk: int = 0, medium_risk: int = 0, 
+                    youtube_count: int = 0, web_count: int = 0):
     """Mostrar el resumen del análisis con métricas de riesgo."""
     st.markdown("## 📊 Dashboard de Métricas")
     
-    # Métricas principales
+    # Métricas de fuentes de datos
+    st.markdown("### 📈 Fuentes de Datos")
+    col_sources = st.columns(3)
+    with col_sources[0]:
+        st.metric("YouTube Results", youtube_count)
+    with col_sources[1]:
+        st.metric("Web Results", web_count)
+    with col_sources[2]:
+        st.metric("Total Results", summary['total_results'])
+    
+    st.markdown("---")
+    
+    # Métricas principales de análisis
+    st.markdown("### 🔍 Análisis de Uso")
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("Total Results", summary['total_results'])
+        st.metric("Potential Usages", summary['category_counts'].get('possible_song_usage', 0))
     
     with col2:
-        possible_usage = summary['category_counts'].get('possible_song_usage', 0)
-        st.metric("Potential Usages", possible_usage)
+        covers = summary['category_counts'].get('cover', 0)
+        st.metric("Covers", covers)
     
     with col3:
         st.metric("High Risk Results", high_risk)
@@ -395,15 +414,15 @@ def display_summary(summary: Dict, song_name: str = "", artist_name: str = "", h
     col4, col5, col6 = st.columns(3)
     
     with col4:
-        covers = summary['category_counts'].get('cover', 0)
-        st.metric("Covers", covers)
-    
-    with col5:
         promo = summary['category_counts'].get('promotional_usage', 0)
         st.metric("Promotional", promo)
     
-    with col6:
+    with col5:
         st.metric("Medium Risk", medium_risk)
+    
+    with col6:
+        reference = summary['category_counts'].get('reference_only', 0)
+        st.metric("References", reference)
     
     st.markdown("---")
     

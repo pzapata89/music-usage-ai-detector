@@ -5,8 +5,9 @@ Handles SerpAPI integration to search Google results.
 
 import requests
 import json
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Set
 import logging
+import time
 
 from config import config
 
@@ -23,25 +24,99 @@ class WebSearcher:
         self.base_url = "https://serpapi.com/search"
         logger.info("SerpAPI client initialized successfully")
     
-    def search_web(self, song_name: str, artist_name: str, num_results: int = 10) -> List[Dict]:
+    def search_web(self, song_name: str, artist_name: str, max_results: int = 60) -> List[Dict]:
         """
-        Search Google for results related to a song and artist.
+        Search Google using multiple query variations with SerpAPI.
         
         Args:
             song_name: Name of the song to search for
             artist_name: Name of the artist to search for
-            num_results: Number of results to return (default: 10)
+            max_results: Maximum number of unique results to return (default: 60)
             
         Returns:
-            List of dictionaries containing search result information
-            
-        Raises:
-            Exception: If SerpAPI request fails
+            List of dictionaries containing search result information (deduplicated)
         """
-        # Construct search query
-        query = f"{song_name} {artist_name}"
+        # Query variations to detect different types of usage
+        query_variations = [
+            f"{song_name} {artist_name}",
+            f"{song_name} {artist_name} cover",
+            f"{song_name} {artist_name} lyrics",
+            f"{song_name} {artist_name} meaning",
+            f"{song_name} {artist_name} review",
+            f"{song_name} {artist_name} live performance",
+            f"{song_name} {artist_name} remix"
+        ]
         
-        # Parameters for SerpAPI
+        all_results = []
+        seen_urls: Set[str] = set()
+        seen_titles: Set[str] = set()
+        
+        logger.info(f"Starting multi-query web search for '{song_name}' by '{artist_name}'")
+        logger.info(f"Will execute {len(query_variations)} query variations")
+        
+        for query_index, query in enumerate(query_variations, 1):
+            try:
+                logger.info(f"Web query {query_index}/{len(query_variations)}: {query}")
+                
+                # Fetch results for this query
+                query_results = self._fetch_web_results(query, num_results=20)
+                
+                # Deduplicate and add new results
+                new_count = 0
+                for result in query_results:
+                    url = result.get('link', '').strip()
+                    title = result.get('title', '').lower().strip()
+                    
+                    # Skip if we've seen this URL
+                    if url in seen_urls:
+                        continue
+                    
+                    # Skip if we've seen a very similar title
+                    if self._is_similar_web_title(title, seen_titles):
+                        continue
+                    
+                    # Add to results
+                    seen_urls.add(url)
+                    seen_titles.add(title)
+                    all_results.append(result)
+                    new_count += 1
+                    
+                    # Check if we've reached max results
+                    if len(all_results) >= max_results:
+                        logger.info(f"Reached target of {max_results} unique web results")
+                        break
+                
+                logger.info(f"Web query {query_index}: Found {new_count} new unique results (Total: {len(all_results)})")
+                
+                # Rate limit protection - wait between queries
+                if query_index < len(query_variations) and len(all_results) < max_results:
+                    time.sleep(0.5)
+                
+                # Break if we have enough results
+                if len(all_results) >= max_results:
+                    break
+                    
+            except requests.exceptions.RequestException as e:
+                logger.error(f"SerpAPI request error for query '{query}': {e}")
+                continue
+            except Exception as e:
+                logger.error(f"Unexpected error for web query '{query}': {e}")
+                continue
+        
+        logger.info(f"Web search complete: {len(all_results)} unique results found")
+        return all_results
+    
+    def _fetch_web_results(self, query: str, num_results: int = 20) -> List[Dict]:
+        """
+        Fetch web results for a single query from SerpAPI.
+        
+        Args:
+            query: Search query string
+            num_results: Number of results to fetch
+            
+        Returns:
+            List of result dictionaries
+        """
         params = {
             'api_key': self.api_key,
             'engine': 'google',
@@ -52,14 +127,11 @@ class WebSearcher:
         }
         
         try:
-            # Make API request
             response = requests.get(self.base_url, params=params)
             response.raise_for_status()
             
-            # Parse JSON response
             search_results = response.json()
             
-            # Process organic results
             results = []
             if 'organic_results' in search_results:
                 for result in search_results['organic_results']:
@@ -72,18 +144,62 @@ class WebSearcher:
                     }
                     results.append(result_info)
             
-            logger.info(f"Found {len(results)} web results for query: {query}")
             return results
             
-        except requests.exceptions.RequestException as e:
-            logger.error(f"SerpAPI request error: {e}")
-            raise Exception(f"SerpAPI request failed: {e}")
-        except json.JSONDecodeError as e:
-            logger.error(f"Error parsing SerpAPI response: {e}")
-            raise Exception(f"Failed to parse search results: {e}")
         except Exception as e:
-            logger.error(f"Unexpected error during web search: {e}")
-            raise
+            logger.error(f"Error fetching web results: {e}")
+            return []
+    
+    def _is_similar_web_title(self, title: str, seen_titles: Set[str]) -> bool:
+        """
+        Check if a web title is similar to already seen titles.
+        
+        Args:
+            title: Title to check
+            seen_titles: Set of previously seen titles
+            
+        Returns:
+            True if similar title found, False otherwise
+        """
+        # Normalize title
+        normalized = title.lower().strip()
+        
+        # Direct match
+        if normalized in seen_titles:
+            return True
+        
+        # Check similarity with seen titles
+        for seen in seen_titles:
+            if self._calculate_title_similarity(normalized, seen) > 0.85:
+                return True
+        
+        return False
+    
+    def _calculate_title_similarity(self, str1: str, str2: str) -> float:
+        """
+        Calculate similarity between two title strings.
+        
+        Args:
+            str1: First string
+            str2: Second string
+            
+        Returns:
+            Similarity score between 0 and 1
+        """
+        if not str1 or not str2:
+            return 0.0
+        
+        # Character-based similarity
+        set1 = set(str1)
+        set2 = set(str2)
+        
+        if not set1 or not set2:
+            return 0.0
+        
+        intersection = len(set1 & set2)
+        union = len(set1 | set2)
+        
+        return intersection / union if union > 0 else 0.0
     
     def search_news(self, song_name: str, artist_name: str, num_results: int = 5) -> List[Dict]:
         """

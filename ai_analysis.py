@@ -320,24 +320,36 @@ Responde únicamente con: HIGH, MEDIUM, o LOW
             artist_name: Nombre del artista
             
         Returns:
-            Reporte ejecutivo en formato string
+            Reporte ejecutivo en formato string (nunca falla, siempre retorna algo)
         """
-        # Calcular métricas
+        # Calcular métricas detalladas
         total_results = len(results)
+        youtube_count = sum(1 for r in results if r.get('source') == 'YouTube')
+        web_count = sum(1 for r in results if r.get('source') == 'Web')
         usage_count = sum(1 for r in results if r.get('ai_category') == 'possible_song_usage')
         promo_count = sum(1 for r in results if r.get('ai_category') == 'promotional_usage')
         cover_count = sum(1 for r in results if r.get('ai_category') == 'cover')
+        reference_count = sum(1 for r in results if r.get('ai_category') == 'reference_only')
         high_risk = sum(1 for r in results if self.classify_usage_risk(
             r.get('title', ''), r.get('description', ''), r.get('ai_category', '')
         ) == 'HIGH')
+        medium_risk = sum(1 for r in results if self.classify_usage_risk(
+            r.get('title', ''), r.get('description', ''), r.get('ai_category', '')
+        ) == 'MEDIUM')
+        low_risk = total_results - high_risk - medium_risk
         
         # Crear resumen de datos para el prompt
         categories_summary = f"""
 - Total de resultados encontrados: {total_results}
+- Resultados de YouTube: {youtube_count}
+- Resultados de Web: {web_count}
 - Usos directos potenciales: {usage_count}
 - Usos promocionales/comerciales: {promo_count}
 - Covers o interpretaciones: {cover_count}
+- Solo referencias: {reference_count}
 - Resultados de alto riesgo: {high_risk}
+- Resultados de riesgo medio: {medium_risk}
+- Resultados de bajo riesgo: {low_risk}
 """
         
         try:
@@ -349,37 +361,106 @@ DATOS DEL ANÁLISIS:
 
 Basándote en estos datos, genera un reporte ejecutivo profesional que incluya:
 
-1. RESUMEN EJECUTIVO (2-3 oraciones)
-2. NIVEL DE RIESGO GENERAL (Alto/Medio/Bajo)
-3. RECOMENDACIÓN DE ACCIÓN
+1. RESUMEN EJECUTIVO (2-3 oraciones sobre el hallazgo principal)
+2. NIVEL DE RIESGO GENERAL (Alto/Medio/Bajo con justificación)
+3. DISTRIBUCIÓN DE USOS (breve análisis de los tipos de uso encontrados)
+4. RECOMENDACIÓN DE ACCIÓN (qué pasos tomar)
 
 El tono debe ser profesional, objetivo y útil para organizaciones de copyright.
 """
             
             response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "Eres un analista senior de derechos de autor en una organización de protección musical. Proporciona reportes ejecutivos claros y accionables."},
+                    {"role": "system", "content": "Eres un analista senior de derechos de autor en una organización de protección musical. Proporciona reportes ejecutivos claros, accionables y basados en datos."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=400,
+                max_tokens=500,
                 temperature=0.3
             )
             
             report = response.choices[0].message.content.strip()
-            logger.info(f"Reporte ejecutivo generado para {song_name}")
+            logger.info(f"Reporte ejecutivo generado exitosamente para {song_name}")
             return report
             
         except Exception as e:
-            logger.error(f"Error generando reporte ejecutivo: {e}")
-            return f"""## Resumen del Análisis
+            logger.error(f"Error generando reporte ejecutivo con IA: {e}")
+            # Siempre retornar reporte fallback, nunca fallar
+            return self._generate_fallback_report(
+                song_name, artist_name, total_results, youtube_count, web_count,
+                usage_count, cover_count, promo_count, high_risk, medium_risk, low_risk
+            )
+    
+    def _generate_fallback_report(self, song_name: str, artist_name: str, 
+                                   total_results: int, youtube_count: int, web_count: int,
+                                   usage_count: int, cover_count: int, promo_count: int,
+                                   high_risk: int, medium_risk: int, low_risk: int) -> str:
+        """
+        Generar reporte fallback detallado cuando la IA falla.
+        
+        Args:
+            song_name, artist_name: Información de la canción
+            Various counts: Métricas del análisis
+            
+        Returns:
+            Reporte estructurado en formato string
+        """
+        # Determinar nivel de riesgo
+        if high_risk > 5:
+            risk_level = "ALTO"
+            risk_assessment = f"Se detectaron {high_risk} usos de alto riesgo que requieren atención inmediata."
+            recommendation = "Recomendación: Revisar urgentemente los usos de alto riesgo. Considerar acciones de protección de derechos de autor."
+        elif high_risk > 2 or medium_risk > 5:
+            risk_level = "MEDIO"
+            risk_assessment = f"Se encontraron {high_risk} usos de alto riesgo y {medium_risk} de riesgo medio. Requiere monitoreo."
+            recommendation = "Recomendación: Monitorear los usos detectados. Evaluar si requieren licenciamiento o acción legal."
+        else:
+            risk_level = "BAJO"
+            risk_assessment = f"Mayoría de resultados son de bajo riesgo ({low_risk}). Uso limitado detectado."
+            recommendation = "Recomendación: Monitoreo estándar. No se detectaron usos comerciales significativos."
+        
+        # Generar resumen de uso
+        usage_summary = []
+        if usage_count > 0:
+            usage_summary.append(f"{usage_count} uso(s) directo(s) potencial(es)")
+        if cover_count > 0:
+            usage_summary.append(f"{cover_count} versión(es) cover")
+        if promo_count > 0:
+            usage_summary.append(f"{promo_count} uso(s) promocional(es)")
+        
+        usage_text = ", ".join(usage_summary) if usage_summary else "solo referencias y menciones"
+        
+        fallback_report = f"""## AI Executive Report
 
-**Canción:** {song_name} - {artist_name}
-**Total de resultados:** {total_results}
-**Usos potenciales:** {usage_count}
-**Riesgo alto:** {high_risk}
+### Executive Summary
+Análisis de "{song_name}" de {artist_name} encontró **{total_results} resultados totales** ({youtube_count} de YouTube, {web_count} de la web). Se detectaron {usage_text}.
 
-*El reporte detallado no pudo ser generado. Por favor revise los resultados individuales.*"""
+### Key Findings
+| Métrica | Valor |
+|---------|-------|
+| **Total de Resultados** | {total_results} |
+| **Resultados YouTube** | {youtube_count} |
+| **Resultados Web** | {web_count} |
+| **Usos Directos Potenciales** | {usage_count} |
+| **Versiones Cover** | {cover_count} |
+| **Usos Promocionales** | {promo_count} |
+| **Alto Riesgo** | {high_risk} |
+| **Riesgo Medio** | {medium_risk} |
+| **Bajo Riesgo** | {low_risk} |
+
+### Risk Assessment
+**Nivel: {risk_level}**
+
+{risk_assessment}
+
+### Recommendation
+{recommendation}
+
+---
+*Nota: Este es un reporte de fallback generado automáticamente. El análisis detallado con IA no estuvo disponible, pero los datos mostrados son precisos basados en la búsqueda realizada.*"""
+        
+        logger.info(f"Reporte fallback generado para {song_name}")
+        return fallback_report
 
 
 def format_classification_display(category: str, confidence: float, reasoning: str) -> str:
