@@ -1,13 +1,13 @@
 """
 Configuration module for Music Usage AI Detector.
-Handles API key loading and configuration settings.
+Handles API key loading from environment variables and Streamlit Cloud secrets.
 """
 
 import os
 from dotenv import load_dotenv
 from typing import Optional
 
-# Load environment variables from .env file
+# Load environment variables from .env file (for local development)
 load_dotenv()
 
 class Config:
@@ -20,7 +20,11 @@ class Config:
     
     def _get_api_key(self, key_name: str) -> str:
         """
-        Get API key from environment variables.
+        Get API key from environment variables or Streamlit secrets.
+        
+        Priority:
+        1. Streamlit Cloud secrets (for deployment)
+        2. Environment variables from .env file (for local development)
         
         Args:
             key_name: Name of the environment variable
@@ -31,11 +35,24 @@ class Config:
         Raises:
             ValueError: If API key is not found
         """
-        api_key = os.getenv(key_name)
+        api_key = None
+        
+        # Try Streamlit secrets first (for Streamlit Cloud deployment)
+        try:
+            import streamlit as st
+            api_key = st.secrets.get(key_name)
+        except Exception:
+            pass
+        
+        # Fall back to environment variables (for local development)
+        if not api_key:
+            api_key = os.getenv(key_name)
+        
         if not api_key:
             raise ValueError(
-                f"API key '{key_name}' not found in environment variables. "
-                f"Please set it in your .env file or environment."
+                f"API key '{key_name}' not found. "
+                f"Please set it in Streamlit Cloud Secrets (for deployment) "
+                f"or in your .env file (for local development)."
             )
         return api_key
     
