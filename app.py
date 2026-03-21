@@ -538,10 +538,10 @@ def display_sidebar():
     st.sidebar.markdown("## ℹ️ Acerca de")
     st.sidebar.markdown("""
     Esta herramienta te ayuda a:
-    - 🔍 Encontrar usos de canciones en YouTube
-    - 🌐 Descubrir menciones en la web
-    - 🤖 Clasificar tipos de uso con IA
-    - 📊 Generar reportes detallados
+    - Encontrar usos de canciones en YouTube
+    - Descubrir menciones en la web
+    - Clasificar tipos de uso con IA
+    - Generar reportes detallados
     """)
     
     st.sidebar.markdown("## 🏷️ Categorías de Clasificación")
@@ -555,9 +555,9 @@ def display_sidebar():
     st.sidebar.markdown("## ⚙️ Configuración")
     st.sidebar.markdown(f"""
     **Estado de APIs:**
-    - ✅ API de YouTube
-    - ✅ API de SerpAPI
-    - ✅ API de OpenAI
+    ✅ API de YouTube
+    ✅ API de SerpAPI
+    ✅ API de OpenAI
     """)
 
 def main():
