@@ -273,6 +273,58 @@ Responde únicamente con: HIGH, MEDIUM, o LOW
             logger.error(f"Error clasificando riesgo: {e}")
             return 'LOW'
 
+    def generate_summary_report(self, results: List[Dict], song_name: str, artist_name: str) -> Dict:
+        """
+        Generar resumen estadístico de los resultados clasificados.
+
+        Returns:
+            Dict con total_results, category_counts, category_percentages,
+            high_confidence_results e insights.
+        """
+        total = len(results)
+
+        category_counts = {
+            'possible_song_usage': 0,
+            'cover': 0,
+            'promotional_usage': 0,
+            'reference_only': 0,
+        }
+        high_confidence = 0
+
+        for r in results:
+            cat = r.get('ai_category', 'reference_only')
+            if cat in category_counts:
+                category_counts[cat] += 1
+            if r.get('ai_confidence', 0) >= 0.7:
+                high_confidence += 1
+
+        category_percentages = {
+            cat: (count / total * 100) if total > 0 else 0
+            for cat, count in category_counts.items()
+        }
+
+        insights = []
+        usage = category_counts['possible_song_usage']
+        covers = category_counts['cover']
+        promo = category_counts['promotional_usage']
+
+        if usage > 0:
+            insights.append(f"Se detectaron {usage} uso(s) directo(s) potencial(es) de '{song_name}'.")
+        if covers > 0:
+            insights.append(f"Se encontraron {covers} versión(es) cover o interpretación de la canción.")
+        if promo > 0:
+            insights.append(f"Hay {promo} resultado(s) con uso promocional o comercial.")
+        if total == 0:
+            insights.append("No se encontraron resultados para esta búsqueda.")
+
+        return {
+            'total_results': total,
+            'category_counts': category_counts,
+            'category_percentages': category_percentages,
+            'high_confidence_results': high_confidence,
+            'insights': insights,
+        }
+
     def generate_ai_report(self, results: List[Dict], song_name: str, artist_name: str) -> str:
         """
         Generar un reporte ejecutivo de IA con análisis de copyright.
