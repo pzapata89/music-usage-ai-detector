@@ -15,6 +15,9 @@ from config import config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Límite de análisis por sesión
+MAX_ANALISIS = 20
+
 class AIAnalyzer:
     """Wrapper de API de OpenAI para analizar y clasificar resultados de búsqueda."""
     
@@ -30,6 +33,7 @@ class AIAnalyzer:
         """Inicializar cliente de OpenAI."""
         try:
             self.client = OpenAI(api_key=config.openai_api_key)
+            self.analysis_count = 0  # Contador de análisis en la sesión actual
             logger.info("Cliente de OpenAI inicializado exitosamente")
         except Exception as e:
             logger.error(f"Error al inicializar cliente de OpenAI: {e}")
@@ -48,18 +52,27 @@ class AIAnalyzer:
         Returns:
             Diccionario con el resultado de clasificación y confianza
         """
+        # Verificar límite de análisis por sesión
+        if self.analysis_count >= MAX_ANALISIS:
+            logger.warning(f"Límite de análisis por sesión alcanzado ({MAX_ANALISIS}). Clasificación por defecto.")
+            return {
+                "category": "reference_only",
+                "confidence": 0.5,
+                "reasoning": "Límite de análisis alcanzado - clasificación por defecto"
+            }
+        
         # Create analysis prompt
         prompt = self._create_classification_prompt(title, description, song_name, artist_name)
         
         try:
             # Llamar a API de OpenAI (nueva versión 1.0+)
             response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": "Eres un experto en analizar cómo se usan las canciones en contenido en línea. Clasifica los resultados con precisión y proporciona razonamientos breves en español."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=200,
+                max_tokens=300,
                 temperature=0.3
             )
             
@@ -67,7 +80,9 @@ class AIAnalyzer:
             result_text = response.choices[0].message.content.strip()
             classification = self._parse_classification_response(result_text)
             
-            logger.info(f"Resultado clasificado: {title} -> {classification['category']}")
+            # Incrementar contador de análisis
+            self.analysis_count += 1
+            logger.info(f"Análisis #{self.analysis_count}/{MAX_ANALISIS} realizado: {title} -> {classification['category']}")
             return classification
             
         except Exception as e:
@@ -288,7 +303,7 @@ Responde únicamente con: HIGH, MEDIUM, o LOW
 """
             
             response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": "Eres un experto en derechos de autor y análisis de uso comercial de música. Clasifica el riesgo de manera conservadora."},
                     {"role": "user", "content": prompt}
