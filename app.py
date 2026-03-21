@@ -8,6 +8,7 @@ import pandas as pd
 from typing import List, Dict
 import time
 import logging
+import html
 
 from youtube_search import YouTubeSearcher, format_youtube_results
 from web_search import WebSearcher, format_web_results
@@ -475,7 +476,7 @@ def display_summary(summary: Dict, song_name: str = "", artist_name: str = "",
     if summary['insights']:
         st.markdown("### 💡 Hallazgos Clave")
         for insight in summary['insights']:
-            st.markdown(f'<div class="insight-card">{insight}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="insight-card">{html.escape(str(insight))}</div>', unsafe_allow_html=True)
 
 def display_result_cards(results: List[Dict], source_type: str):
     """Mostrar tarjetas individuales de resultados con nivel de riesgo."""
@@ -487,16 +488,22 @@ def display_result_cards(results: List[Dict], source_type: str):
         'reference_only': 'Solo Referencia'
     }
     
+    # Categorías CSS válidas (whitelist)
+    valid_css_classes = {'possible-song-usage', 'cover', 'promotional-usage', 'reference-only'}
+
     for i, result in enumerate(results):
         with st.container():
             # Estilo de badge de categoría
             category = result.get('ai_category', 'reference_only')
             confidence = result.get('ai_confidence', 0.5)
             risk_level = result.get('risk_level', 'LOW')
-            
+
+            # Validar category_class contra whitelist para evitar inyección CSS
             category_class = category.replace('_', '-')
-            category_display = category_translations.get(category, category.replace('_', ' ').title())
-            
+            if category_class not in valid_css_classes:
+                category_class = 'reference-only'
+            category_display = category_translations.get(category, 'Solo Referencia')
+
             # Mostrar nivel de riesgo con colores
             if risk_level == 'HIGH':
                 st.error(f"⚠️ HIGH RISK - {category_display}")
@@ -504,32 +511,44 @@ def display_result_cards(results: List[Dict], source_type: str):
                 st.warning(f"⚡ MEDIUM RISK - {category_display}")
             else:
                 st.success(f"✅ LOW RISK - {category_display}")
-            
+
+            # Escapar todos los datos externos antes de insertar en HTML
+            safe_title = html.escape(str(result.get('title', '')))
+            safe_desc = html.escape(str(result.get('description', '')))
+            safe_reasoning = html.escape(str(result.get('ai_reasoning', 'Analysis not available')))
+            safe_category_display = html.escape(category_display)
+
+            # Validar esquema de URL para prevenir inyección javascript:
+            raw_link = result.get('link', '#')
+            safe_link = raw_link if raw_link.startswith(('https://', 'http://')) else '#'
+
             # Tarjeta de resultado
             st.markdown(f"""
             <div class="result-card">
                 <h4 style="margin-bottom: 0.5rem;">
-                    <a href="{result['link']}" target="_blank" style="color: #1f2937; text-decoration: none; font-weight: 600;">
-                        {result['title']}
+                    <a href="{safe_link}" target="_blank" rel="noopener noreferrer" style="color: #1f2937; text-decoration: none; font-weight: 600;">
+                        {safe_title}
                     </a>
                 </h4>
-                <p style="color: #6b7280; margin-bottom: 1rem;">{result['description']}</p>
+                <p style="color: #6b7280; margin-bottom: 1rem;">{safe_desc}</p>
                 <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
-                    <span class="category-badge {category_class}">{category_display}</span>
+                    <span class="category-badge {category_class}">{safe_category_display}</span>
                     <span class="confidence-score">🎯 Confianza: {int(confidence * 100)}%</span>
                     <span class="risk-badge" style="font-weight: bold; color: {'#dc2626' if risk_level == 'HIGH' else '#ea580c' if risk_level == 'MEDIUM' else '#16a34a'};">{risk_level} RISK</span>
                 </div>
                 <div class="ai-reasoning">
-                    <strong>🤖 AI Analysis:</strong> {result.get('ai_reasoning', 'Analysis not available')}
+                    <strong>🤖 AI Analysis:</strong> {safe_reasoning}
                 </div>
             </div>
             """, unsafe_allow_html=True)
-            
+
             # Metadatos adicionales para diferentes fuentes
             if source_type == 'youtube' and 'channel' in result:
-                st.markdown(f'<div class="video-meta">📺 Channel: {result["channel"]} | 🎬 YouTube</div>', unsafe_allow_html=True)
+                safe_channel = html.escape(str(result['channel']))
+                st.markdown(f'<div class="video-meta">📺 Channel: {safe_channel} | 🎬 YouTube</div>', unsafe_allow_html=True)
             elif source_type == 'web' and 'displayed_link' in result:
-                st.markdown(f'<div class="web-meta">🔗 {result["displayed_link"]} | 🌐 Web</div>', unsafe_allow_html=True)
+                safe_displayed = html.escape(str(result['displayed_link']))
+                st.markdown(f'<div class="web-meta">🔗 {safe_displayed} | 🌐 Web</div>', unsafe_allow_html=True)
             
             st.markdown("---")
 

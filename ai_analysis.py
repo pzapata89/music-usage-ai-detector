@@ -94,173 +94,113 @@ class AIAnalyzer:
                 "reasoning": "Clasificación fallida - asignando solo referencia por defecto"
             }
     
+    def _sanitize_for_prompt(self, text: str, max_length: int = 500) -> str:
+        """Truncate and strip control characters to reduce prompt injection risk."""
+        if not text:
+            return ""
+        text = str(text)[:max_length]
+        # Remove ASCII control characters except newline and tab
+        text = ''.join(c for c in text if c >= ' ' or c in '\n\t')
+        return text.strip()
+
+    def _create_classification_prompt(self, title: str, description: str, song_name: str, artist_name: str) -> str:
+        """Crear prompt para clasificación de uso de música."""
+        safe_title = self._sanitize_for_prompt(title, 200)
+        safe_desc = self._sanitize_for_prompt(description, 400)
+        safe_song = self._sanitize_for_prompt(song_name, 100)
+        safe_artist = self._sanitize_for_prompt(artist_name, 100)
+        return f"""
+Analiza este resultado de búsqueda y clasifica el tipo de uso de la canción "{safe_song}" de {safe_artist}.
+
+TÍTULO: <data>{safe_title}</data>
+DESCRIPCIÓN: <data>{safe_desc}</data>
+
+Categorías posibles:
+1. possible_song_usage - Uso directo de la canción en contenido
+2. cover - Alguien interpretando o cubriendo la canción
+3. promotional_usage - Uso de la canción para promoción o marketing
+4. reference_only - Mencionando la canción pero sin usarla
+
+Responde en formato JSON:
+{{
+    "category": "nombre_categoria",
+    "confidence": 0.0-1.0,
+    "reasoning": "breve explicación en español"
+}}
+"""
+    
+    def _parse_classification_response(self, response_text: str) -> Dict:
+        """Parsear respuesta de clasificación de la API."""
+        try:
+            # Intentar parsear como JSON
+            if response_text.startswith('{'):
+                result = json.loads(response_text)
+                return {
+                    "category": result.get("category", "reference_only"),
+                    "confidence": float(result.get("confidence", 0.5)),
+                    "reasoning": result.get("reasoning", "Sin razonamiento proporcionado")
+                }
+        except json.JSONDecodeError:
+            pass
+        
+        # Si no es JSON, parsear texto plano
+        category = "reference_only"
+        confidence = 0.5
+        reasoning = response_text
+        
+        # Buscar categorías en el texto
+        for cat in self.CATEGORIES.keys():
+            if cat.lower() in response_text.lower():
+                category = cat
+                break
+        
+        return {
+            "category": category,
+            "confidence": confidence,
+            "reasoning": reasoning[:200]  # Limitar longitud
+        }
+    
     def analyze_batch(self, results: List[Dict], song_name: str, artist_name: str) -> List[Dict]:
         """
-        Clasificar múltiples resultados de búsqueda.
+        Analizar un lote de resultados.
         
         Args:
-            results: Lista de diccionarios de resultados de búsqueda
-            song_name: Nombre de la canción buscada
-            artist_name: Nombre del artista buscado
-            
-        Returns:
-            Lista de resultados con información de clasificación agregada
-        """
-        classified_results = []
-        
-        for result in results:
-            classification = self.classify_result(
-                result['title'],
-                result['description'],
-                song_name,
-                artist_name
-            )
-            
-            # Add classification to result
-            result_with_classification = result.copy()
-            result_with_classification.update({
-                'ai_category': classification['category'],
-                'ai_confidence': classification['confidence'],
-                'ai_reasoning': classification['reasoning']
-            })
-            
-            classified_results.append(result_with_classification)
-        
-        return classified_results
-    
-    def generate_summary_report(self, classified_results: List[Dict], song_name: str, artist_name: str) -> Dict:
-        """
-        Generar un reporte resumen del análisis.
-        
-        Args:
-            classified_results: Lista de resultados de búsqueda clasificados
+            results: Lista de resultados a analizar
             song_name: Nombre de la canción
             artist_name: Nombre del artista
             
         Returns:
-            Diccionario con estadísticas resumen y hallazgos
+            Lista de resultados con clasificación agregada
         """
-        # Count categories
-        category_counts = {}
-        total_results = len(classified_results)
+        logger.info(f"Analizando lote de {len(results)} resultados")
         
-        for result in classified_results:
-            category = result.get('ai_category', 'reference_only')
-            category_counts[category] = category_counts.get(category, 0) + 1
+        classified_results = []
+        for result in results:
+            try:
+                classification = self.classify_result(
+                    result.get('title', ''),
+                    result.get('description', ''),
+                    song_name,
+                    artist_name
+                )
+                
+                # Agregar información de clasificación al resultado
+                result['ai_category'] = classification['category']
+                result['ai_confidence'] = classification['confidence']
+                result['ai_reasoning'] = classification['reasoning']
+                
+                classified_results.append(result)
+                
+            except Exception as e:
+                logger.error(f"Error analizando resultado: {e}")
+                # Agregar resultado con clasificación por defecto
+                result['ai_category'] = 'reference_only'
+                result['ai_confidence'] = 0.5
+                result['ai_reasoning'] = 'Error en análisis'
+                classified_results.append(result)
         
-        # Calculate percentages
-        category_percentages = {}
-        for category, count in category_counts.items():
-            category_percentages[category] = (count / total_results) * 100 if total_results > 0 else 0
-        
-        # Generate insights
-        insights = self._generate_insights(category_counts, category_percentages, song_name, artist_name)
-        
-        summary = {
-            'song_name': song_name,
-            'artist_name': artist_name,
-            'total_results': total_results,
-            'category_counts': category_counts,
-            'category_percentages': category_percentages,
-            'insights': insights,
-            'high_confidence_results': len([r for r in classified_results if r.get('ai_confidence', 0) > 0.8])
-        }
-        
-        return summary
-    
-    def _create_classification_prompt(self, title: str, description: str, song_name: str, artist_name: str) -> str:
-        """Crear el prompt de clasificación para OpenAI."""
-        categories_text = "\n".join([f"- {k}: {v}" for k, v in self.CATEGORIES.items()])
-        
-        prompt = f"""
-Analiza este resultado de búsqueda y clasifica cómo se está usando la canción "{song_name}" de {artist_name}.
-
-Título: {title}
-Descripción: {description}
-
-Categorías:
-{categories_text}
-
-Por favor responde en este formato exacto:
-Category: [nombre_de_categoria]
-Confidence: [0.0-1.0]
-Reasoning: [explicación breve en español]
-
-Sé objetivo y basa tu análisis únicamente en el título y descripción proporcionados.
-"""
-        return prompt
-    
-    def _parse_classification_response(self, response_text: str) -> Dict:
-        """Parsear la respuesta de OpenAI en datos estructurados."""
-        # Valores por defecto
-        result = {
-            "category": "reference_only",
-            "confidence": 0.5,
-            "reasoning": "No se pudo parsear la respuesta"
-        }
-        
-        try:
-            # Extraer categoría
-            category_match = re.search(r'Category:\s*(\w+)', response_text, re.IGNORECASE)
-            if category_match:
-                category = category_match.group(1).lower()
-                # Validar categoría
-                if category in self.CATEGORIES:
-                    result["category"] = category
-            
-            # Extraer confianza
-            confidence_match = re.search(r'Confidence:\s*([0-9.]+)', response_text)
-            if confidence_match:
-                confidence = float(confidence_match.group(1))
-                result["confidence"] = min(max(confidence, 0.0), 1.0)
-            
-            # Extraer razonamiento
-            reasoning_match = re.search(r'Reasoning:\s*(.+)', response_text, re.IGNORECASE)
-            if reasoning_match:
-                result["reasoning"] = reasoning_match.group(1).strip()
-            
-        except Exception as e:
-            logger.error(f"Error al parsear respuesta de clasificación: {e}")
-        
-        return result
-    
-    def _generate_insights(self, counts: Dict, percentages: Dict, song_name: str, artist_name: str) -> List[str]:
-        """Generar hallazgos a partir de los resultados de clasificación."""
-        insights = []
-        
-        # Tipo de uso más común
-        if counts:
-            most_common = max(counts.items(), key=lambda x: x[1])
-            category_name = self.CATEGORIES.get(most_common[0], most_common[0])
-            insights.append(f"Uso más común: {category_name} ({most_common[1]} resultados)")
-        
-        # Detección de uso alto
-        possible_usage_count = counts.get('possible_song_usage', 0)
-        if possible_usage_count > 0:
-            insights.append(f"Se encontraron {possible_usage_count} uso(s) directo(s) posible(s) de la canción")
-        
-        # Detección de covers
-        cover_count = counts.get('cover', 0)
-        if cover_count > 0:
-            insights.append(f"Se encontraron {cover_count} versión(es) cover")
-        
-        # Uso promocional
-        promo_count = counts.get('promotional_usage', 0)
-        if promo_count > 0:
-            insights.append(f"Se encontraron {promo_count} uso(s) promocional(es)")
-        
-        # Evaluación general
-        total_usage = possible_usage_count + promo_count
-        if total_usage > 5:
-            insights.append("Alta actividad detectada - la canción parece ser ampliamente utilizada")
-        elif total_usage > 2:
-            insights.append("Actividad moderada detectada - la canción tiene uso notable")
-        elif total_usage > 0:
-            insights.append("Baja actividad detectada - uso limitado encontrado")
-        else:
-            insights.append("No se detectó uso directo - solo referencias encontradas")
-        
-        return insights
+        logger.info(f"Lote analizado: {len(classified_results)} resultados clasificados")
+        return classified_results
     
     def classify_usage_risk(self, title: str, description: str, category: str = "") -> str:
         """
@@ -282,8 +222,13 @@ Sé objetivo y basa tu análisis únicamente en el título y descripción propor
             'reference_only': 'LOW'
         }
         
-        if category in risk_mapping:
+        if category and category in risk_mapping:
             return risk_mapping[category]
+        
+        # Verificar límite de análisis por sesión
+        if self.analysis_count >= MAX_ANALISIS:
+            logger.warning(f"Límite de análisis por sesión alcanzado ({MAX_ANALISIS}). Riesgo por defecto: LOW.")
+            return "LOW"
         
         # Si no hay categoría, usar IA para clasificar
         try:
@@ -312,19 +257,22 @@ Responde únicamente con: HIGH, MEDIUM, o LOW
                 temperature=0.1
             )
             
-            result = response.choices[0].message.content.strip().upper()
+            risk_level = response.choices[0].message.content.strip().upper()
             
-            if 'HIGH' in result:
-                return 'HIGH'
-            elif 'MEDIUM' in result or 'MID' in result:
-                return 'MEDIUM'
+            # Incrementar contador de análisis
+            self.analysis_count += 1
+            logger.info(f"Análisis de riesgo #{self.analysis_count}/{MAX_ANALISIS} realizado: {risk_level}")
+            
+            if risk_level in ['HIGH', 'MEDIUM', 'LOW']:
+                return risk_level
             else:
+                logger.warning(f"Respuesta de riesgo no válida: {risk_level}")
                 return 'LOW'
                 
         except Exception as e:
             logger.error(f"Error clasificando riesgo: {e}")
             return 'LOW'
-    
+
     def generate_ai_report(self, results: List[Dict], song_name: str, artist_name: str) -> str:
         """
         Generar un reporte ejecutivo de IA con análisis de copyright.
@@ -367,9 +315,12 @@ Responde únicamente con: HIGH, MEDIUM, o LOW
 - Resultados de bajo riesgo: {low_risk}
 """
         
+        safe_song = self._sanitize_for_prompt(song_name, 100)
+        safe_artist = self._sanitize_for_prompt(artist_name, 100)
+
         try:
             prompt = f"""
-Actúa como un analista experto en derechos de autor evaluando el uso online de la canción "{song_name}" de {artist_name}.
+Actúa como un analista experto en derechos de autor evaluando el uso online de la canción "{safe_song}" de {safe_artist}.
 
 DATOS DEL ANÁLISIS:
 {categories_summary}
@@ -477,7 +428,6 @@ Análisis de "{song_name}" de {artist_name} encontró **{total_results} resultad
         logger.info(f"Reporte fallback generado para {song_name}")
         return fallback_report
 
-
 def format_classification_display(category: str, confidence: float, reasoning: str) -> str:
     """
     Formatear información de clasificación para mostrar en la interfaz.
@@ -488,9 +438,16 @@ def format_classification_display(category: str, confidence: float, reasoning: s
         reasoning: Razonamiento de la clasificación
         
     Returns:
-        Cadena formateada para mostrar
+        String formateado para mostrar
     """
-    category_display = category.replace('_', ' ').title()
-    confidence_percent = int(confidence * 100)
+    category_translations = {
+        'possible_song_usage': 'Uso Directo de Canción',
+        'cover': 'Cover/Interpretación',
+        'promotional_usage': 'Uso Promocional',
+        'reference_only': 'Solo Referencia'
+    }
     
-    return f"**{category_display}** ({confidence_percent}% de confianza)\n{reasoning}"
+    display_name = category_translations.get(category, category.replace('_', ' ').title())
+    confidence_pct = int(confidence * 100)
+    
+    return f"**{display_name}** (Confianza: {confidence_pct}%)\n\n{reasoning}"

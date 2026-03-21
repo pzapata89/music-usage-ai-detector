@@ -129,9 +129,9 @@ class WebSearcher:
         try:
             response = requests.get(self.base_url, params=params)
             response.raise_for_status()
-            
+
             search_results = response.json()
-            
+
             results = []
             if 'organic_results' in search_results:
                 for result in search_results['organic_results']:
@@ -143,11 +143,13 @@ class WebSearcher:
                         'position': result.get('position', 0)
                     }
                     results.append(result_info)
-            
+
             return results
-            
+
         except Exception as e:
-            logger.error(f"Error fetching web results: {e}")
+            # Avoid logging the full exception as it may contain the API key in the URL
+            status = getattr(getattr(e, 'response', None), 'status_code', 'N/A')
+            logger.error(f"Error fetching web results: {type(e).__name__} status={status}")
             return []
     
     def _is_similar_web_title(self, title: str, seen_titles: Set[str]) -> bool:
@@ -247,10 +249,12 @@ class WebSearcher:
             return results
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"SerpAPI news search error: {e}")
-            raise Exception(f"SerpAPI news search failed: {e}")
+            # Avoid logging the full exception as it may contain the API key in the URL
+            status = getattr(getattr(e, 'response', None), 'status_code', 'N/A')
+            logger.error(f"SerpAPI news search error: {type(e).__name__} status={status}")
+            raise Exception(f"SerpAPI news search failed")
         except Exception as e:
-            logger.error(f"Unexpected error during news search: {e}")
+            logger.error(f"Unexpected error during news search: {type(e).__name__}")
             raise
 
 def format_web_results(results: List[Dict]) -> List[Dict]:
