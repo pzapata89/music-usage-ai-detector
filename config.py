@@ -17,6 +17,8 @@ class Config:
         self.youtube_api_key = self._get_api_key("YOUTUBE_API_KEY")
         self.serpapi_api_key = self._get_api_key("SERPAPI_API_KEY")
         self.openai_api_key = self._get_api_key("OPENAI_API_KEY")
+        self.login_salt = self._get_api_key("LOGIN_SALT")
+        self.login_users = self._get_login_users()
     
     def _get_api_key(self, key_name: str) -> str:
         """
@@ -56,6 +58,32 @@ class Config:
             )
         return api_key
     
+    def _get_login_users(self) -> dict:
+        """
+        Carga el diccionario usuario->hash desde secrets o variables de entorno.
+        Formato env: LOGIN_USER_SACVEN, LOGIN_USER_PEDRO, LOGIN_USER_INVITADO
+        """
+        users = {}
+        user_keys = ['SACVEN', 'Pedro', 'Invitado']
+
+        for username in user_keys:
+            env_key = f"LOGIN_USER_{username.upper()}"
+            value = None
+
+            try:
+                import streamlit as st
+                value = st.secrets.get(env_key)
+            except Exception:
+                pass
+
+            if not value:
+                value = os.getenv(env_key)
+
+            if value:
+                users[username] = value
+
+        return users
+
     @property
     def youtube_api_key(self) -> str:
         """Get YouTube API key."""

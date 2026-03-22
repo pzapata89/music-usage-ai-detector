@@ -15,6 +15,7 @@ from web_search import WebSearcher, format_web_results
 from ai_analysis import AIAnalyzer, format_classification_display
 from config import config
 from pdf_generator import get_pdf_download_link
+from login import show_login, logout
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -579,8 +580,18 @@ def display_sidebar():
     ✅ API de OpenAI
     """)
 
+    st.sidebar.markdown("---")
+    username = st.session_state.get('username', '')
+    st.sidebar.markdown(f"👤 **{username}**")
+    if st.sidebar.button("Cerrar sesión", use_container_width=True):
+        logout()
+
 def main():
     """Función principal de la aplicación."""
+    # Verificar autenticación antes de mostrar cualquier contenido
+    if not show_login():
+        st.stop()
+
     # Inicializar estado de sesión
     initialize_session_state()
     
