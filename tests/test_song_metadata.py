@@ -1,6 +1,7 @@
-from song_metadata import SongCandidate
 import json
+import pytest
 import song_metadata
+from song_metadata import SongCandidate, get_song_metadata
 from unittest.mock import patch, MagicMock
 
 
@@ -78,10 +79,6 @@ def test_spotify_search_tracks():
     assert candidates[0].album == "Vida"
     assert candidates[0].spotify_id == "spotify_id_1"
     assert candidates[0].confidence == 1.0
-
-
-import pytest
-from song_metadata import get_song_metadata
 
 
 def test_get_song_metadata_spotify_success():
@@ -168,3 +165,21 @@ def test_get_song_metadata_both_fail_raises():
             MockOpenAI.return_value.chat.completions.create.side_effect = Exception("openai caído")
             with pytest.raises(Exception):
                 get_song_metadata("test")
+
+
+def test_get_song_metadata_openai_fallback_handles_markdown_response():
+    """OpenAI retorna JSON envuelto en bloque markdown — debe parsearse correctamente."""
+    markdown_response = '```json\n[{"song_name": "Test Song", "artist_name": "Test Artist", "album": "Test Album"}]\n```'
+
+    mock_openai_resp = MagicMock()
+    mock_openai_resp.choices[0].message.content = markdown_response
+
+    song_metadata._spotify_client = None
+    with patch("song_metadata.requests.post", side_effect=Exception("spotify caído")):
+        with patch("song_metadata.OpenAI") as MockOpenAI:
+            MockOpenAI.return_value.chat.completions.create.return_value = mock_openai_resp
+            candidates = get_song_metadata("test")
+
+    assert len(candidates) == 1
+    assert candidates[0].song_name == "Test Song"
+    assert candidates[0].artist_name == "Test Artist"

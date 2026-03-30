@@ -94,19 +94,23 @@ def _openai_fallback(user_input: str) -> List[SongCandidate]:
     # Eliminar bloques de código markdown si están presentes
     if "```" in text:
         text = text.split("```")[1]
-        if text.startswith("json"):
-            text = text[4:]
+        if text.lower().startswith("json"):
+            text = text[4:].lstrip()
     data = json.loads(text)
-    return [
-        SongCandidate(
-            song_name=item["song_name"],
-            artist_name=item["artist_name"],
+    candidates = []
+    for item in data[:3]:
+        song = item.get("song_name", "").strip()
+        artist = item.get("artist_name", "").strip()
+        if not song or not artist:
+            continue
+        candidates.append(SongCandidate(
+            song_name=song,
+            artist_name=artist,
             album=item.get("album", ""),
             spotify_id="",
             confidence=0.8,
-        )
-        for item in data[:3]
-    ]
+        ))
+    return candidates
 
 
 def get_song_metadata(user_input: str) -> List[SongCandidate]:
