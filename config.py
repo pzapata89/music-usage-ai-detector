@@ -17,6 +17,8 @@ class Config:
         self.youtube_api_key = self._get_api_key("YOUTUBE_API_KEY")
         self.serpapi_api_key = self._get_api_key("SERPAPI_API_KEY")
         self.openai_api_key = self._get_api_key("OPENAI_API_KEY")
+        self.spotify_client_id = self._get_api_key("SPOTIFY_CLIENT_ID")
+        self.spotify_client_secret = self._get_api_key("SPOTIFY_CLIENT_SECRET")
         self.login_salt = self._get_api_key("LOGIN_SALT")
         self.login_users = self._get_login_users()
     
@@ -106,10 +108,28 @@ class Config:
     def openai_api_key(self) -> str:
         """Get OpenAI API key."""
         return self._openai_api_key
-    
+
     @openai_api_key.setter
     def openai_api_key(self, value: str):
         self._openai_api_key = value
+
+    @property
+    def spotify_client_id(self) -> str:
+        """Get Spotify Client ID."""
+        return self._spotify_client_id
+
+    @spotify_client_id.setter
+    def spotify_client_id(self, value: str):
+        self._spotify_client_id = value
+
+    @property
+    def spotify_client_secret(self) -> str:
+        """Get Spotify Client Secret."""
+        return self._spotify_client_secret
+
+    @spotify_client_secret.setter
+    def spotify_client_secret(self, value: str):
+        self._spotify_client_secret = value
 
 # Global configuration instance
 config = Config()
