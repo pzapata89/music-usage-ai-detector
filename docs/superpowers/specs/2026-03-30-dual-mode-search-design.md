@@ -190,12 +190,42 @@ Las credenciales de Spotify se obtienen en: https://developer.spotify.com/dashbo
 
 ---
 
+## Reporte Ejecutivo en Análisis Profundo
+
+### Prominencia en la UI
+El reporte ejecutivo de OpenAI debe mostrarse siempre en el Análisis Profundo, destacado visualmente al inicio de los resultados. Se usará `st.info()` o un contenedor estilizado en lugar del `st.markdown()` actual, para que sea imposible pasarlo por alto.
+
+### PDF siempre incluye el reporte ejecutivo
+**Bug existente a corregir:** `app.py` actualmente construye `summary_for_pdf` sin incluir `ai_report`, por lo que el PDF nunca muestra el reporte ejecutivo aunque `pdf_generator.py` ya tiene la sección preparada (líneas 200–207).
+
+**Fix:** en `display_summary()`, pasar `ai_report` como parámetro e incluirlo en `summary_for_pdf` antes de llamar a `get_pdf_download_link()`.
+
+```python
+# Antes (bug):
+summary_for_pdf = summary.copy()
+summary_for_pdf['high_risk_count'] = high_risk
+summary_for_pdf['medium_risk_count'] = medium_risk
+
+# Después (fix):
+summary_for_pdf = summary.copy()
+summary_for_pdf['high_risk_count'] = high_risk
+summary_for_pdf['medium_risk_count'] = medium_risk
+summary_for_pdf['ai_report'] = ai_report  # ← nuevo
+```
+
+`display_summary()` recibirá un nuevo parámetro `ai_report: str = ""`.
+
+### Garantía de siempre generar el reporte
+`generate_ai_report()` ya tiene un fallback (`_generate_fallback_report()`) que nunca falla. No se requieren cambios en `ai_analysis.py`.
+
+---
+
 ## Lo que NO cambia
 
 - `youtube_search.py` — sin modificaciones
 - `web_search.py` — sin modificaciones
 - `ai_analysis.py` — sin modificaciones
-- `pdf_generator.py` — sin modificaciones
+- `pdf_generator.py` — sin modificaciones (ya tiene soporte para `ai_report` en PDF)
 - `login.py` — sin modificaciones
 - `perform_search()` en `app.py` — sin cambios internos (solo se llama con parámetros ya identificados)
-- Lógica de clasificación IA, reportes ejecutivos, PDF, métricas de riesgo — todo intacto
+- Lógica de clasificación IA, métricas de riesgo — intacta
