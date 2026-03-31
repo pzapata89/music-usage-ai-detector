@@ -145,4 +145,9 @@ def get_song_metadata(user_input: str) -> List[SongCandidate]:
     except Exception as e:
         logger.warning(f"Spotify falló para '{user_input}': {e}, usando fallback OpenAI")
 
-    return _openai_fallback(user_input)
+    candidates = _openai_fallback(user_input)
+    if not candidates:
+        raise RuntimeError(
+            f"No se pudo identificar la canción '{user_input}' con Spotify ni OpenAI."
+        )
+    return candidates

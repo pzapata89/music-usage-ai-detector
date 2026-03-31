@@ -271,9 +271,20 @@ def run_quick_search(user_query: str):
             return
 
         quick_links = []
+        youtube_failed_any = False
+        web_failed_any = False
         for candidate in candidates:
             links_data = search_links(candidate.song_name, candidate.artist_name)
             quick_links.append(links_data)
+            if links_data.get("youtube_failed"):
+                youtube_failed_any = True
+            if links_data.get("web_failed"):
+                web_failed_any = True
+
+        if youtube_failed_any:
+            st.warning("⚠️ No se pudieron cargar los videos de YouTube.")
+        if web_failed_any:
+            st.warning("⚠️ No se pudieron cargar los resultados web.")
 
         st.session_state.song_candidates = candidates
         st.session_state.quick_links = quick_links

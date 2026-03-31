@@ -29,6 +29,8 @@ def search_links(song_name: str, artist_name: str) -> Dict:
     """
     query = f"{song_name} {artist_name}"
     links: List[Dict] = []
+    youtube_failed = False
+    web_failed = False
 
     try:
         yt = YouTubeSearcher()
@@ -40,6 +42,7 @@ def search_links(song_name: str, artist_name: str) -> Dict:
         )
     except Exception as e:
         logger.error(f"YouTube falló en búsqueda rápida: {e}")
+        youtube_failed = True
 
     try:
         web = WebSearcher()
@@ -51,5 +54,12 @@ def search_links(song_name: str, artist_name: str) -> Dict:
         )
     except Exception as e:
         logger.error(f"SerpAPI falló en búsqueda rápida: {e}")
+        web_failed = True
 
-    return {"song": song_name, "artist": artist_name, "links": links}
+    return {
+        "song": song_name,
+        "artist": artist_name,
+        "links": links,
+        "youtube_failed": youtube_failed,
+        "web_failed": web_failed,
+    }
