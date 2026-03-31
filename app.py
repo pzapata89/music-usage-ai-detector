@@ -16,6 +16,8 @@ from ai_analysis import AIAnalyzer, format_classification_display
 from config import config
 from pdf_generator import get_pdf_download_link
 from login import show_login, logout
+from song_metadata import get_song_metadata, SongCandidate
+from quick_search import search_links
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -212,6 +214,18 @@ st.markdown("""
 
 def initialize_session_state():
     """Inicializar variables de estado de la sesión de Streamlit."""
+    # Estado del flujo dual (nuevas variables)
+    if 'mode' not in st.session_state:
+        st.session_state.mode = 'idle'
+    if 'song_candidates' not in st.session_state:
+        st.session_state.song_candidates = []
+    if 'quick_links' not in st.session_state:
+        st.session_state.quick_links = []
+    if 'selected_candidate_idx' not in st.session_state:
+        st.session_state.selected_candidate_idx = 0
+    if 'user_query' not in st.session_state:
+        st.session_state.user_query = ''
+    # Estado existente (sin cambios)
     if 'search_results' not in st.session_state:
         st.session_state.search_results = {
             'youtube': [],
@@ -230,33 +244,21 @@ def display_header():
     st.markdown("---")
 
 def display_search_form():
-    """Mostrar el formulario de búsqueda."""
-    st.markdown("### 🔍 Ingresa los datos de la canción")
-    
+    """Mostrar el formulario de búsqueda con campo único."""
+    st.markdown("### 🔍 Busca una canción")
+
     with st.form("search_form"):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            song_name = st.text_input(
-                "🎶 Nombre de la Canción",
-                placeholder="Ej: Bohemian Rhapsody...",
-                help="Ingresa el nombre exacto o parcial de la canción"
-            )
-        
-        with col2:
-            artist_name = st.text_input(
-                "🎤 Nombre del Artista",
-                placeholder="Ej: Queen...",
-                help="Ingresa el nombre del artista o banda"
-            )
-        
-        submitted = st.form_submit_button(
-            "🔍 Buscar Usos de la Canción",
-            type="primary",
-            use_container_width=True
+        user_query = st.text_input(
+            "🎵 Nombre de la canción",
+            placeholder="Ej: Despacito, La Bamba, Bohemian Rhapsody...",
+            help="Ingresa el nombre de la canción. Identificaremos el artista automáticamente.",
         )
-        
-        return submitted, song_name, artist_name
+        submitted = st.form_submit_button(
+            "🔍 Buscar",
+            type="primary",
+            use_container_width=True,
+        )
+        return submitted, user_query
 
 def perform_search(song_name: str, artist_name: str):
     """Realizar la búsqueda en YouTube y la web."""
@@ -600,15 +602,15 @@ def main():
     display_sidebar()
     
     # Mostrar formulario de búsqueda
-    submitted, song_name, artist_name = display_search_form()
-    
+    submitted, user_query = display_search_form()
+
     # Manejar envío de búsqueda
     if submitted:
-        if not song_name.strip() or not artist_name.strip():
-            st.warning("⚠️ Por favor ingresa tanto el nombre de la canción como el del artista.")
+        if not user_query.strip():
+            st.warning("⚠️ Por favor ingresa el nombre de la canción.")
         else:
             with st.spinner("🔍 Buscando y analizando..."):
-                success = perform_search(song_name.strip(), artist_name.strip())
+                success = perform_search(user_query.strip(), '')
                 if success:
                     st.session_state.search_performed = True
                     st.rerun()
