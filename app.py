@@ -350,6 +350,7 @@ def display_quick_results():
             already_analyzed = (
                 st.session_state.mode == 'deep_analysis'
                 and st.session_state.selected_candidate_idx == i
+                and st.session_state.search_performed
             )
             if already_analyzed:
                 st.success("✅ Análisis profundo ejecutado")
