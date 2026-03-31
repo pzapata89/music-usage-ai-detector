@@ -554,7 +554,7 @@ def display_summary(summary: Dict, song_name: str = "", artist_name: str = "",
                 st.download_button(
                     label="Descargar Reporte PDF",
                     data=pdf_bytes,
-                    file_name="music_usage_report.pdf",
+                    file_name=filename,
                     mime="application/pdf",
                     width='stretch',
                     type="primary"

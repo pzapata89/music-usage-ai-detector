@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import time
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -39,9 +40,10 @@ class SpotifyClient:
 
     def __init__(self) -> None:
         self._token: Optional[str] = None
+        self._token_expires_at: float = 0.0
 
     def _get_token(self) -> str:
-        if self._token:
+        if self._token and time.time() < self._token_expires_at:
             return self._token
         credentials = f"{config.spotify_client_id}:{config.spotify_client_secret}"
         encoded = base64.b64encode(credentials.encode()).decode()
@@ -51,7 +53,10 @@ class SpotifyClient:
             data={"grant_type": "client_credentials"},
         )
         response.raise_for_status()
-        self._token = response.json()["access_token"]
+        data = response.json()
+        self._token = data["access_token"]
+        # expires_in es en segundos; restamos 60s como margen de seguridad
+        self._token_expires_at = time.time() + data.get("expires_in", 3600) - 60
         return self._token
 
     def search_tracks(self, query: str, limit: int = 3) -> List[SongCandidate]:
