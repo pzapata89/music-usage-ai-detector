@@ -260,6 +260,103 @@ def display_search_form():
         )
         return submitted, user_query
 
+def run_quick_search(user_query: str):
+    """Ejecutar búsqueda rápida: identifica canción y obtiene links sin clasificación IA."""
+    with st.spinner("🔍 Identificando canción y obteniendo links..."):
+        try:
+            candidates = get_song_metadata(user_query)
+        except Exception as e:
+            st.error("❌ No pudimos identificar la canción. Intenta con un nombre más específico.")
+            logger.error(f"Error identificando canción '{user_query}': {e}")
+            return
+
+        quick_links = []
+        for candidate in candidates:
+            links_data = search_links(candidate.song_name, candidate.artist_name)
+            quick_links.append(links_data)
+
+        st.session_state.song_candidates = candidates
+        st.session_state.quick_links = quick_links
+        st.session_state.mode = 'quick_results'
+        st.session_state.search_performed = False
+        logger.info(
+            f"Búsqueda rápida completada: '{user_query}' → {len(candidates)} candidato(s)"
+        )
+
+def display_quick_results():
+    """Mostrar tarjetas de candidatos con links y botón de análisis profundo."""
+    candidates = st.session_state.song_candidates
+    quick_links = st.session_state.quick_links
+
+    if not candidates:
+        st.warning("⚠️ No se encontraron canciones para tu búsqueda.")
+        return
+
+    st.markdown("---")
+    st.markdown("### 🎵 Canciones encontradas")
+
+    cols = st.columns(len(candidates))
+    for i, candidate in enumerate(candidates):
+        with cols[i]:
+            st.markdown(f"#### 🎵 {html.escape(candidate.song_name)}")
+            st.markdown(f"👤 **{html.escape(candidate.artist_name)}**")
+            if candidate.album:
+                st.markdown(f"💿 _{html.escape(candidate.album)}_")
+            st.markdown("---")
+
+            links_data = quick_links[i] if i < len(quick_links) else {"links": []}
+            yt_links = [l for l in links_data["links"] if l["type"] == "YouTube"]
+            web_links = [l for l in links_data["links"] if l["type"] == "Web"]
+
+            if yt_links:
+                st.markdown("**📺 Videos de YouTube**")
+                for link in yt_links[:10]:
+                    safe_url = (
+                        link["url"]
+                        if link["url"].startswith(("https://", "http://"))
+                        else "#"
+                    )
+                    safe_title = html.escape(str(link["title"]))
+                    st.markdown(f"- [{safe_title}]({safe_url})")
+            else:
+                st.caption("Sin resultados de YouTube.")
+
+            if web_links:
+                st.markdown("**🌐 Resultados Web**")
+                for link in web_links[:10]:
+                    safe_url = (
+                        link["url"]
+                        if link["url"].startswith(("https://", "http://"))
+                        else "#"
+                    )
+                    safe_title = html.escape(str(link["title"]))
+                    st.markdown(f"- [{safe_title}]({safe_url})")
+            else:
+                st.caption("Sin resultados web.")
+
+            st.markdown("---")
+
+            already_analyzed = (
+                st.session_state.mode == 'deep_analysis'
+                and st.session_state.selected_candidate_idx == i
+            )
+            if already_analyzed:
+                st.success("✅ Análisis profundo ejecutado")
+            else:
+                if st.button(
+                    "🔬 Ejecutar Análisis Profundo",
+                    key=f"deep_btn_{i}",
+                    use_container_width=True,
+                    type="primary",
+                ):
+                    st.session_state.selected_candidate_idx = i
+                    st.session_state.mode = 'deep_analysis'
+                    with st.spinner("🤖 Ejecutando análisis profundo..."):
+                        success = perform_search(candidate.song_name, candidate.artist_name)
+                        if success:
+                            st.session_state.search_performed = True
+                    st.rerun()
+
 def perform_search(song_name: str, artist_name: str):
     """Realizar la búsqueda en YouTube y la web."""
     try:
