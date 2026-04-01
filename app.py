@@ -16,6 +16,8 @@ from ai_analysis import AIAnalyzer, format_classification_display
 from config import config
 from pdf_generator import get_pdf_download_link
 from login import show_login, logout
+from song_metadata import get_song_metadata, SongCandidate
+from quick_search import search_links
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -212,6 +214,18 @@ st.markdown("""
 
 def initialize_session_state():
     """Inicializar variables de estado de la sesión de Streamlit."""
+    # Estado del flujo dual (nuevas variables)
+    if 'mode' not in st.session_state:
+        st.session_state.mode = 'idle'
+    if 'song_candidates' not in st.session_state:
+        st.session_state.song_candidates = []
+    if 'quick_links' not in st.session_state:
+        st.session_state.quick_links = []
+    if 'selected_candidate_idx' not in st.session_state:
+        st.session_state.selected_candidate_idx = 0
+    if 'user_query' not in st.session_state:
+        st.session_state.user_query = ''
+    # Estado existente (sin cambios)
     if 'search_results' not in st.session_state:
         st.session_state.search_results = {
             'youtube': [],
@@ -230,33 +244,130 @@ def display_header():
     st.markdown("---")
 
 def display_search_form():
-    """Mostrar el formulario de búsqueda."""
-    st.markdown("### 🔍 Ingresa los datos de la canción")
-    
+    """Mostrar el formulario de búsqueda con campo único."""
+    st.markdown("### 🔍 Busca una canción")
+
     with st.form("search_form"):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            song_name = st.text_input(
-                "🎶 Nombre de la Canción",
-                placeholder="Ej: Bohemian Rhapsody...",
-                help="Ingresa el nombre exacto o parcial de la canción"
-            )
-        
-        with col2:
-            artist_name = st.text_input(
-                "🎤 Nombre del Artista",
-                placeholder="Ej: Queen...",
-                help="Ingresa el nombre del artista o banda"
-            )
-        
-        submitted = st.form_submit_button(
-            "🔍 Buscar Usos de la Canción",
-            type="primary",
-            use_container_width=True
+        user_query = st.text_input(
+            "🎵 Nombre de la canción",
+            placeholder="Ej: Despacito, La Bamba, Bohemian Rhapsody...",
+            help="Ingresa el nombre de la canción. Identificaremos el artista automáticamente.",
         )
-        
-        return submitted, song_name, artist_name
+        submitted = st.form_submit_button(
+            "🔍 Buscar",
+            type="primary",
+            use_container_width=True,
+        )
+        return submitted, user_query
+
+def run_quick_search(user_query: str):
+    """Ejecutar búsqueda rápida: identifica canción y obtiene links sin clasificación IA."""
+    with st.spinner("🔍 Identificando canción y obteniendo links..."):
+        try:
+            candidates = get_song_metadata(user_query)
+        except Exception as e:
+            st.error("❌ No pudimos identificar la canción. Intenta con un nombre más específico.")
+            logger.error(f"Error identificando canción '{user_query}': {e}")
+            return
+
+        quick_links = []
+        youtube_failed_any = False
+        web_failed_any = False
+        for candidate in candidates:
+            links_data = search_links(candidate.song_name, candidate.artist_name)
+            quick_links.append(links_data)
+            if links_data.get("youtube_failed"):
+                youtube_failed_any = True
+            if links_data.get("web_failed"):
+                web_failed_any = True
+
+        if youtube_failed_any:
+            st.warning("⚠️ No se pudieron cargar los videos de YouTube.")
+        if web_failed_any:
+            st.warning("⚠️ No se pudieron cargar los resultados web.")
+
+        st.session_state.song_candidates = candidates
+        st.session_state.quick_links = quick_links
+        st.session_state.mode = 'quick_results'
+        st.session_state.search_performed = False
+        logger.info(
+            f"Búsqueda rápida completada: '{user_query}' → {len(candidates)} candidato(s)"
+        )
+
+def display_quick_results():
+    """Mostrar tarjetas de candidatos con links y botón de análisis profundo."""
+    candidates = st.session_state.song_candidates
+    quick_links = st.session_state.quick_links
+
+    if not candidates:
+        st.warning("⚠️ No se encontraron canciones para tu búsqueda.")
+        return
+
+    st.markdown("---")
+    st.markdown("### 🎵 Canciones encontradas")
+
+    cols = st.columns(len(candidates))
+    for i, candidate in enumerate(candidates):
+        with cols[i]:
+            st.markdown(f"#### 🎵 {html.escape(candidate.song_name)}")
+            st.markdown(f"👤 **{html.escape(candidate.artist_name)}**")
+            if candidate.album:
+                st.markdown(f"💿 _{html.escape(candidate.album)}_")
+            st.markdown("---")
+
+            links_data = quick_links[i] if i < len(quick_links) else {"links": []}
+            yt_links = [l for l in links_data["links"] if l["type"] == "YouTube"]
+            web_links = [l for l in links_data["links"] if l["type"] == "Web"]
+
+            if yt_links:
+                st.markdown("**📺 Videos de YouTube**")
+                for link in yt_links[:10]:
+                    safe_url = (
+                        link["url"]
+                        if link["url"].startswith(("https://", "http://"))
+                        else "#"
+                    )
+                    safe_title = html.escape(str(link["title"]))
+                    st.markdown(f"- [{safe_title}]({safe_url})")
+            else:
+                st.caption("Sin resultados de YouTube.")
+
+            if web_links:
+                st.markdown("**🌐 Resultados Web**")
+                for link in web_links[:10]:
+                    safe_url = (
+                        link["url"]
+                        if link["url"].startswith(("https://", "http://"))
+                        else "#"
+                    )
+                    safe_title = html.escape(str(link["title"]))
+                    st.markdown(f"- [{safe_title}]({safe_url})")
+            else:
+                st.caption("Sin resultados web.")
+
+            st.markdown("---")
+
+            already_analyzed = (
+                st.session_state.mode == 'deep_analysis'
+                and st.session_state.selected_candidate_idx == i
+                and st.session_state.search_performed
+            )
+            if already_analyzed:
+                st.success("✅ Análisis profundo ejecutado")
+            else:
+                if st.button(
+                    "🔬 Ejecutar Análisis Profundo",
+                    key=f"deep_btn_{i}",
+                    use_container_width=True,
+                    type="primary",
+                ):
+                    st.session_state.selected_candidate_idx = i
+                    st.session_state.mode = 'deep_analysis'
+                    with st.spinner("🤖 Ejecutando análisis profundo..."):
+                        success = perform_search(candidate.song_name, candidate.artist_name)
+                        if success:
+                            st.session_state.search_performed = True
+                    st.rerun()
 
 def perform_search(song_name: str, artist_name: str):
     """Realizar la búsqueda en YouTube y la web."""
@@ -351,23 +462,24 @@ def display_results():
         st.info("🔍 No se encontraron resultados. Intenta con diferentes términos de búsqueda.")
         return
     
-    # Mostrar AI Executive Report primero
+    # Mostrar Reporte Ejecutivo IA primero
     if results.get('ai_report'):
         st.markdown("---")
-        st.subheader("🤖 AI Executive Report")
-        st.markdown(results['ai_report'])
+        st.subheader("🤖 Reporte Ejecutivo de IA")
+        st.info(results['ai_report'])
         st.markdown("---")
-    
+
     # Mostrar resumen con métricas de riesgo
     if results['summary']:
         display_summary(
-            results['summary'], 
+            results['summary'],
             results.get('song_name', 'Desconocida'),
             results.get('artist_name', 'Desconocido'),
             results.get('high_risk_count', 0),
             results.get('medium_risk_count', 0),
             results.get('youtube_count', 0),
-            results.get('web_count', 0)
+            results.get('web_count', 0),
+            ai_report=results.get('ai_report', '')
         )
     
     # Mostrar resultados de YouTube
@@ -380,9 +492,10 @@ def display_results():
         st.markdown("## 🌐 Resultados de la Web")
         display_result_cards(results['web'], 'web')
 
-def display_summary(summary: Dict, song_name: str = "", artist_name: str = "", 
-                    high_risk: int = 0, medium_risk: int = 0, 
-                    youtube_count: int = 0, web_count: int = 0):
+def display_summary(summary: Dict, song_name: str = "", artist_name: str = "",
+                    high_risk: int = 0, medium_risk: int = 0,
+                    youtube_count: int = 0, web_count: int = 0,
+                    ai_report: str = ""):
     """Mostrar el resumen del análisis con métricas de riesgo."""
     st.markdown("## 📊 Dashboard de Métricas")
     
@@ -390,11 +503,11 @@ def display_summary(summary: Dict, song_name: str = "", artist_name: str = "",
     st.markdown("### 📈 Fuentes de Datos")
     col_sources = st.columns(3)
     with col_sources[0]:
-        st.metric("YouTube Results", youtube_count)
+        st.metric("Resultados YouTube", youtube_count)
     with col_sources[1]:
-        st.metric("Web Results", web_count)
+        st.metric("Resultados Web", web_count)
     with col_sources[2]:
-        st.metric("Total Results", summary['total_results'])
+        st.metric("Total de Resultados", summary['total_results'])
     
     st.markdown("---")
     
@@ -403,28 +516,28 @@ def display_summary(summary: Dict, song_name: str = "", artist_name: str = "",
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("Potential Usages", summary['category_counts'].get('possible_song_usage', 0))
-    
+        st.metric("Usos Potenciales", summary['category_counts'].get('possible_song_usage', 0))
+
     with col2:
         covers = summary['category_counts'].get('cover', 0)
         st.metric("Covers", covers)
-    
+
     with col3:
-        st.metric("High Risk Results", high_risk)
-    
+        st.metric("Resultados Riesgo Alto", high_risk)
+
     # Métricas secundarias
     col4, col5, col6 = st.columns(3)
-    
+
     with col4:
         promo = summary['category_counts'].get('promotional_usage', 0)
-        st.metric("Promotional", promo)
-    
+        st.metric("Uso Promocional", promo)
+
     with col5:
-        st.metric("Medium Risk", medium_risk)
-    
+        st.metric("Riesgo Medio", medium_risk)
+
     with col6:
         reference = summary['category_counts'].get('reference_only', 0)
-        st.metric("References", reference)
+        st.metric("Solo Referencias", reference)
     
     st.markdown("---")
     
@@ -437,11 +550,12 @@ def display_summary(summary: Dict, song_name: str = "", artist_name: str = "",
                 summary_for_pdf = summary.copy()
                 summary_for_pdf['high_risk_count'] = high_risk
                 summary_for_pdf['medium_risk_count'] = medium_risk
+                summary_for_pdf['ai_report'] = ai_report
                 pdf_bytes, filename = get_pdf_download_link(song_name, artist_name, summary_for_pdf)
                 st.download_button(
-                    label="Download Report PDF",
+                    label="Descargar Reporte PDF",
                     data=pdf_bytes,
-                    file_name="music_usage_report.pdf",
+                    file_name=filename,
                     mime="application/pdf",
                     width='stretch',
                     type="primary"
@@ -507,16 +621,16 @@ def display_result_cards(results: List[Dict], source_type: str):
 
             # Mostrar nivel de riesgo con colores
             if risk_level == 'HIGH':
-                st.error(f"⚠️ HIGH RISK - {category_display}")
+                st.error(f"⚠️ RIESGO ALTO - {category_display}")
             elif risk_level == 'MEDIUM':
-                st.warning(f"⚡ MEDIUM RISK - {category_display}")
+                st.warning(f"⚡ RIESGO MEDIO - {category_display}")
             else:
-                st.success(f"✅ LOW RISK - {category_display}")
+                st.success(f"✅ RIESGO BAJO - {category_display}")
 
             # Escapar todos los datos externos antes de insertar en HTML
             safe_title = html.escape(str(result.get('title', '')))
             safe_desc = html.escape(str(result.get('description', '')))
-            safe_reasoning = html.escape(str(result.get('ai_reasoning', 'Analysis not available')))
+            safe_reasoning = html.escape(str(result.get('ai_reasoning', 'Análisis no disponible')))
             safe_category_display = html.escape(category_display)
 
             # Validar esquema de URL para prevenir inyección javascript:
@@ -535,10 +649,10 @@ def display_result_cards(results: List[Dict], source_type: str):
                 <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
                     <span class="category-badge {category_class}">{safe_category_display}</span>
                     <span class="confidence-score">🎯 Confianza: {int(confidence * 100)}%</span>
-                    <span class="risk-badge" style="font-weight: bold; color: {'#dc2626' if risk_level == 'HIGH' else '#ea580c' if risk_level == 'MEDIUM' else '#16a34a'};">{risk_level} RISK</span>
+                    <span class="risk-badge" style="font-weight: bold; color: {'#dc2626' if risk_level == 'HIGH' else '#ea580c' if risk_level == 'MEDIUM' else '#16a34a'};">{'RIESGO ALTO' if risk_level == 'HIGH' else 'RIESGO MEDIO' if risk_level == 'MEDIUM' else 'RIESGO BAJO'}</span>
                 </div>
                 <div class="ai-reasoning">
-                    <strong>🤖 AI Analysis:</strong> {safe_reasoning}
+                    <strong>🤖 Análisis IA:</strong> {safe_reasoning}
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -546,7 +660,7 @@ def display_result_cards(results: List[Dict], source_type: str):
             # Metadatos adicionales para diferentes fuentes
             if source_type == 'youtube' and 'channel' in result:
                 safe_channel = html.escape(str(result['channel']))
-                st.markdown(f'<div class="video-meta">📺 Channel: {safe_channel} | 🎬 YouTube</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="video-meta">📺 Canal: {safe_channel} | 🎬 YouTube</div>', unsafe_allow_html=True)
             elif source_type == 'web' and 'displayed_link' in result:
                 safe_displayed = html.escape(str(result['displayed_link']))
                 st.markdown(f'<div class="web-meta">🔗 {safe_displayed} | 🌐 Web</div>', unsafe_allow_html=True)
@@ -588,33 +702,30 @@ def display_sidebar():
 
 def main():
     """Función principal de la aplicación."""
-    # Verificar autenticación antes de mostrar cualquier contenido
     if not show_login():
         st.stop()
 
-    # Inicializar estado de sesión
     initialize_session_state()
-    
-    # Mostrar encabezado y barra lateral
     display_header()
     display_sidebar()
-    
-    # Mostrar formulario de búsqueda
-    submitted, song_name, artist_name = display_search_form()
-    
-    # Manejar envío de búsqueda
+
+    submitted, user_query = display_search_form()
+
     if submitted:
-        if not song_name.strip() or not artist_name.strip():
-            st.warning("⚠️ Por favor ingresa tanto el nombre de la canción como el del artista.")
+        if not user_query.strip():
+            st.warning("⚠️ Por favor ingresa el nombre de una canción.")
         else:
-            with st.spinner("🔍 Buscando y analizando..."):
-                success = perform_search(song_name.strip(), artist_name.strip())
-                if success:
-                    st.session_state.search_performed = True
-                    st.rerun()
-    
-    # Mostrar resultados si se realizó la búsqueda
-    if st.session_state.search_performed:
+            # Resetear estado de búsqueda anterior
+            st.session_state.user_query = user_query.strip()
+            st.session_state.mode = 'idle'
+            st.session_state.search_performed = False
+            run_quick_search(user_query.strip())
+            st.rerun()
+
+    if st.session_state.mode in ('quick_results', 'deep_analysis'):
+        display_quick_results()
+
+    if st.session_state.mode == 'deep_analysis' and st.session_state.search_performed:
         display_results()
 
 if __name__ == "__main__":
