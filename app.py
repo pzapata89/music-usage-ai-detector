@@ -225,6 +225,8 @@ def initialize_session_state():
         st.session_state.selected_candidate_idx = 0
     if 'user_query' not in st.session_state:
         st.session_state.user_query = ''
+    if 'search_type' not in st.session_state:
+        st.session_state.search_type = ''  # 'quick' | 'deep_direct'
     # Estado existente (sin cambios)
     if 'search_results' not in st.session_state:
         st.session_state.search_results = {
@@ -243,22 +245,56 @@ def display_header():
     st.markdown('<p class="sub-header">Descubre cómo se están usando las canciones en internet con análisis impulsado por inteligencia artificial</p>', unsafe_allow_html=True)
     st.markdown("---")
 
-def display_search_form():
-    """Mostrar el formulario de búsqueda con campo único."""
-    st.markdown("### 🔍 Busca una canción")
+def display_search_tabs():
+    """Mostrar formularios en pestañas: Búsqueda Rápida y Análisis Profundo."""
+    tab1, tab2 = st.tabs(["🔍 Búsqueda Rápida", "🔬 Análisis Profundo"])
 
-    with st.form("search_form"):
-        user_query = st.text_input(
-            "🎵 Nombre de la canción",
-            placeholder="Ej: Despacito, La Bamba, Bohemian Rhapsody...",
-            help="Ingresa el nombre de la canción. Identificaremos el artista automáticamente.",
-        )
-        submitted = st.form_submit_button(
-            "🔍 Buscar",
-            type="primary",
-            use_container_width=True,
-        )
-        return submitted, user_query
+    with tab1:
+        st.markdown("Ingresa el nombre de la canción y detectaremos el artista automáticamente.")
+        with st.form("quick_search_form"):
+            user_query = st.text_input(
+                "🎵 Nombre de la canción",
+                placeholder="Ej: Despacito, La Bamba, Bohemian Rhapsody...",
+                help="Identificaremos el artista automáticamente vía Spotify.",
+            )
+            submitted_quick = st.form_submit_button("🔍 Buscar", type="primary", use_container_width=True)
+        if submitted_quick:
+            if not user_query.strip():
+                st.warning("⚠️ Por favor ingresa el nombre de una canción.")
+            else:
+                st.session_state.user_query = user_query.strip()
+                st.session_state.mode = 'idle'
+                st.session_state.search_performed = False
+                st.session_state.search_type = 'quick'
+                run_quick_search(user_query.strip())
+                st.rerun()
+
+    with tab2:
+        st.markdown("Ingresa la canción y el artista para un análisis profundo con clasificación de IA.")
+        with st.form("deep_search_form"):
+            song_name = st.text_input(
+                "🎵 Nombre de la canción",
+                placeholder="Ej: Despacito",
+            )
+            artist_name = st.text_input(
+                "👤 Nombre del artista",
+                placeholder="Ej: Luis Fonsi",
+            )
+            submitted_deep = st.form_submit_button("🔬 Analizar", type="primary", use_container_width=True)
+        if submitted_deep:
+            if not song_name.strip() or not artist_name.strip():
+                st.warning("⚠️ Por favor ingresa tanto el nombre de la canción como el artista.")
+            else:
+                st.session_state.mode = 'deep_analysis'
+                st.session_state.search_type = 'deep_direct'
+                st.session_state.search_performed = False
+                st.session_state.song_candidates = []
+                st.session_state.quick_links = []
+                with st.spinner("🤖 Ejecutando análisis profundo..."):
+                    success = perform_search(song_name.strip(), artist_name.strip())
+                    if success:
+                        st.session_state.search_performed = True
+                st.rerun()
 
 def run_quick_search(user_query: str):
     """Ejecutar búsqueda rápida: identifica canción y obtiene links sin clasificación IA."""
@@ -709,20 +745,10 @@ def main():
     display_header()
     display_sidebar()
 
-    submitted, user_query = display_search_form()
+    display_search_tabs()
 
-    if submitted:
-        if not user_query.strip():
-            st.warning("⚠️ Por favor ingresa el nombre de una canción.")
-        else:
-            # Resetear estado de búsqueda anterior
-            st.session_state.user_query = user_query.strip()
-            st.session_state.mode = 'idle'
-            st.session_state.search_performed = False
-            run_quick_search(user_query.strip())
-            st.rerun()
-
-    if st.session_state.mode in ('quick_results', 'deep_analysis'):
+    # Búsqueda Rápida: mostrar candidatos y, si se eligió uno, también los resultados del análisis
+    if st.session_state.search_type == 'quick' and st.session_state.mode in ('quick_results', 'deep_analysis'):
         display_quick_results()
 
     if st.session_state.mode == 'deep_analysis' and st.session_state.search_performed:
