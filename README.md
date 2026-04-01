@@ -1,211 +1,168 @@
 # Music Usage AI Detector 🎵
 
-A powerful Python application that helps organizations detect possible uses of songs on the internet using AI-powered analysis.
+Aplicación web para detectar usos de canciones en internet, con análisis clasificatorio impulsado por IA. Construida con Streamlit, YouTube Data API, SerpAPI, Spotify API y OpenAI.
 
-## Features
+## Funcionalidades
 
-- **YouTube Search**: Search YouTube videos using the YouTube Data API
-- **Web Search**: Search Google results using SerpAPI
-- **AI Classification**: Automatically classify results into usage categories
-- **Beautiful UI**: Modern Streamlit interface with responsive design
-- **Comprehensive Reports**: Generate detailed usage reports with insights
+### Dos modos de búsqueda
 
-## AI Classification Categories
+**🔍 Búsqueda Rápida**
+- Ingresa solo el nombre de la canción
+- Identificación automática del artista vía Spotify (fallback a OpenAI)
+- Muestra hasta 3 candidatos con links de YouTube y web sin clasificación de IA
+- Desde cada candidato se puede lanzar un Análisis Profundo
 
-The application uses OpenAI to classify search results into four categories:
+**🔬 Análisis Profundo**
+- Ingresa canción + artista directamente
+- Búsqueda exhaustiva: 14 variaciones en YouTube, 7 en web
+- Clasificación de cada resultado con IA (OpenAI `gpt-4o-mini`)
+- Reporte ejecutivo + descarga en PDF
 
-1. **Possible Song Usage** - Direct use of the song in content
-2. **Cover** - Someone covering or performing the song
-3. **Promotional Usage** - Using song for promotion or marketing
-4. **Reference Only** - Mentioning the song but not using it
+### Categorías de clasificación IA
 
-## Project Structure
+| Categoría | Descripción |
+|-----------|-------------|
+| Uso Directo de Canción | Uso directo de la canción en el contenido |
+| Cover / Interpretación | Versiones o covers del tema |
+| Uso Promocional | Uso en marketing o publicidad |
+| Solo Referencia | Menciones sin uso real de la canción |
+
+### Otras funcionalidades
+- Autenticación con login por usuario y contraseña hasheada
+- Dashboard de métricas con niveles de riesgo (Alto / Medio / Bajo)
+- Descarga de reporte PDF con resumen ejecutivo
+- Soporte para deployment en Streamlit Cloud y desarrollo local con `.env`
+
+## Estructura del proyecto
 
 ```
 music_usage_detector/
-├── app.py                 # Main Streamlit application
-├── youtube_search.py      # YouTube API integration
-├── web_search.py          # SerpAPI integration
-├── ai_analysis.py         # AI classification module
-├── config.py              # Configuration and API key management
-├── requirements.txt       # Python dependencies
-├── README.md              # This file
-└── .env                   # Environment variables (create this)
+├── app.py                  # Aplicación principal Streamlit
+├── config.py               # Gestión de API keys (secrets + .env)
+├── login.py                # Autenticación de usuarios
+├── song_metadata.py        # Identificación de canción vía Spotify/OpenAI
+├── quick_search.py         # Búsqueda rápida de links (YouTube + web)
+├── youtube_search.py       # Integración con YouTube Data API v3
+├── web_search.py           # Integración con SerpAPI
+├── ai_analysis.py          # Clasificación y análisis con OpenAI
+├── pdf_generator.py        # Generación de reportes PDF
+├── requirements.txt        # Dependencias Python
+└── tests/                  # Tests unitarios
+    ├── conftest.py
+    ├── test_song_metadata.py
+    └── test_quick_search.py
 ```
 
-## Installation
+## Instalación local
 
-### Prerequisites
+### Prerrequisitos
 
-- Python 3.10 or higher
-- API keys for YouTube, SerpAPI, and OpenAI
+- Python 3.10 o superior
+- API keys para YouTube, SerpAPI, OpenAI y Spotify
 
-### Step 1: Clone or Download
+### 1. Clonar el repositorio
 
 ```bash
-# If using git
 git clone <repository-url>
 cd music_usage_detector
-
-# Or download and extract the files
 ```
 
-### Step 2: Create Virtual Environment
+### 2. Crear entorno virtual
 
 ```bash
-# Create virtual environment
 python -m venv venv
-
-# Activate on Windows
-venv\Scripts\activate
-
-# Activate on macOS/Linux
-source venv/bin/activate
+source venv/bin/activate        # macOS/Linux
+venv\Scripts\activate           # Windows
 ```
 
-### Step 3: Install Dependencies
+### 3. Instalar dependencias
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Configuration
+### 4. Configurar variables de entorno
 
-### Step 1: Get API Keys
-
-1. **YouTube Data API Key**:
-   - Go to [Google Cloud Console](https://console.cloud.google.com/)
-   - Create a new project or select existing one
-   - Enable YouTube Data API v3
-   - Create credentials (API Key)
-
-2. **SerpAPI Key**:
-   - Sign up at [SerpAPI](https://serpapi.com/)
-   - Get your API key from the dashboard
-
-3. **OpenAI API Key**:
-   - Sign up at [OpenAI](https://platform.openai.com/)
-   - Get your API key from the API keys section
-
-### Step 2: Set Up Environment Variables
-
-Create a `.env` file in the project root:
+Crea un archivo `.env` en la raíz del proyecto:
 
 ```env
-YOUTUBE_API_KEY=your_youtube_api_key_here
-SERPAPI_API_KEY=your_serpapi_api_key_here
-OPENAI_API_KEY=your_openai_api_key_here
+YOUTUBE_API_KEY=tu_youtube_api_key
+SERPAPI_API_KEY=tu_serpapi_api_key
+OPENAI_API_KEY=tu_openai_api_key
+SPOTIFY_CLIENT_ID=tu_spotify_client_id
+SPOTIFY_CLIENT_SECRET=tu_spotify_client_secret
+
+# Autenticación
+LOGIN_SALT=tu_salt_aleatorio
+LOGIN_USER_PEDRO=hash_pbkdf2_de_la_contraseña
+LOGIN_USER_SACVEN=hash_pbkdf2_de_la_contraseña
+LOGIN_USER_INVITADO=hash_pbkdf2_de_la_contraseña
 ```
 
-**Important**: Never commit your `.env` file to version control. Add it to `.gitignore`:
+> **Importante:** El archivo `.env` está en `.gitignore` y nunca debe subirse al repositorio.
 
-```gitignore
-.env
-venv/
-__pycache__/
-*.pyc
+Para generar el hash de una contraseña nueva (usa el mismo `LOGIN_SALT`):
+
+```bash
+python -c "import hashlib; print(hashlib.pbkdf2_hmac('sha256', b'PASSWORD', b'SALT', 100000).hex())"
 ```
 
-## Usage
-
-### Running the Application
+### 5. Ejecutar la aplicación
 
 ```bash
 streamlit run app.py
 ```
 
-The application will open in your web browser at `http://localhost:8501`
+La app abre en `http://localhost:8501`.
 
-### Using the Interface
+## Obtener API Keys
 
-1. **Enter Song Details**:
-   - Type the song name in the "Song Name" field
-   - Type the artist name in the "Artist Name" field
+| Servicio | Dónde obtenerla |
+|---------|----------------|
+| YouTube Data API v3 | [Google Cloud Console](https://console.cloud.google.com/) → APIs → YouTube Data API v3 |
+| SerpAPI | [serpapi.com](https://serpapi.com/) → Dashboard |
+| OpenAI | [platform.openai.com](https://platform.openai.com/) → API Keys |
+| Spotify | [developer.spotify.com](https://developer.spotify.com/dashboard) → Create App (usar Client Credentials) |
 
-2. **Search**:
-   - Click the "Search Usage" button
-   - Wait for the search and AI analysis to complete
+## Deployment en Streamlit Cloud
 
-3. **Review Results**:
-   - View the analysis summary with metrics
-   - Browse YouTube results with AI classifications
-   - Explore web results with detailed categorization
+1. Haz push del código a GitHub (rama `main`)
+2. En [share.streamlit.io](https://share.streamlit.io/), conecta el repositorio
+3. En **Settings → Secrets**, agrega todas las variables del `.env`:
 
-4. **Interpret Results**:
-   - Each result shows the title, link, description, and AI classification
-   - Confidence scores indicate how certain the AI is about the classification
-   - The summary provides insights about overall usage patterns
-
-## API Usage Limits
-
-- **YouTube Data API**: 10,000 units per day (free tier)
-- **SerpAPI**: 100 searches per month (free tier)
-- **OpenAI API**: Usage-based pricing (check current rates)
-
-## Troubleshooting
-
-### Common Issues
-
-1. **API Key Errors**:
-   - Ensure all API keys are correctly set in the `.env` file
-   - Check that API keys are valid and active
-
-2. **Import Errors**:
-   - Make sure you've installed all dependencies
-   - Activate the virtual environment
-
-3. **No Results Found**:
-   - Try different search terms
-   - Check if song/artist names are spelled correctly
-
-4. **Slow Performance**:
-   - AI analysis may take time depending on result count
-   - Consider reducing the number of search results
-
-### Debug Mode
-
-To enable detailed logging, modify the logging level in the modules:
-
-```python
-logging.basicConfig(level=logging.DEBUG)
+```toml
+YOUTUBE_API_KEY = "..."
+SERPAPI_API_KEY = "..."
+OPENAI_API_KEY = "..."
+SPOTIFY_CLIENT_ID = "..."
+SPOTIFY_CLIENT_SECRET = "..."
+LOGIN_SALT = "..."
+LOGIN_USER_PEDRO = "..."
+LOGIN_USER_SACVEN = "..."
+LOGIN_USER_INVITADO = "..."
 ```
 
-## Development
+4. Streamlit Cloud detectará el push y redesplegará automáticamente
 
-### Adding New Features
+## Límites de API
 
-The modular structure makes it easy to extend:
+| API | Límite gratuito |
+|-----|----------------|
+| YouTube Data API v3 | 10,000 unidades/día |
+| SerpAPI | 100 búsquedas/mes |
+| OpenAI | Pago por uso |
+| Spotify | Sin límite práctico (Client Credentials) |
 
-1. **New Search Sources**: Add new searcher classes following the pattern in `youtube_search.py`
-2. **Custom Classifications**: Modify the categories in `ai_analysis.py`
-3. **UI Enhancements**: Update the Streamlit interface in `app.py`
-
-### Testing
+## Tests
 
 ```bash
-# Run basic functionality test
-python -c "from config import config; print('API keys loaded successfully')"
+pytest tests/ -v
 ```
 
-## Security Considerations
+## Límite de clasificaciones IA
 
-- Never expose API keys in client-side code
-- Use environment variables for sensitive data
-- Regularly rotate API keys
-- Monitor API usage for unusual activity
-
-## License
-
-This project is provided as-is for educational and development purposes.
-
-## Support
-
-For issues or questions:
-
-1. Check the troubleshooting section above
-2. Verify API key configurations
-3. Review the logs for detailed error messages
+`AIAnalyzer` tiene un cap de **20 clasificaciones por búsqueda** para controlar costos de OpenAI. Los resultados adicionales se clasifican como `reference_only` con confianza 0.5. El cap se resetea en cada nueva búsqueda.
 
 ---
 
-**Made with ❤️ using Streamlit, YouTube Data API, SerpAPI, and OpenAI**
+Construido con Streamlit · YouTube Data API · SerpAPI · OpenAI · Spotify API · fpdf2
