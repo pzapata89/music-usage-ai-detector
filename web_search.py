@@ -15,6 +15,12 @@ from config import config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+def _safe_log(text: str) -> str:
+    """Strip newlines to prevent log injection."""
+    return str(text).replace('\n', ' ').replace('\r', ' ')
+
+
 class WebSearcher:
     """SerpAPI wrapper for searching Google results."""
     
@@ -51,12 +57,12 @@ class WebSearcher:
         seen_urls: Set[str] = set()
         seen_titles: Set[str] = set()
         
-        logger.info(f"Starting multi-query web search for '{song_name}' by '{artist_name}'")
+        logger.info(f"Starting multi-query web search for '{_safe_log(song_name)}' by '{_safe_log(artist_name)}'")
         logger.info(f"Will execute {len(query_variations)} query variations")
         
         for query_index, query in enumerate(query_variations, 1):
             try:
-                logger.info(f"Web query {query_index}/{len(query_variations)}: {query}")
+                logger.info(f"Web query {query_index}/{len(query_variations)}: {_safe_log(query)}")
                 
                 # Fetch results for this query
                 query_results = self._fetch_web_results(query, num_results=20)
@@ -127,7 +133,7 @@ class WebSearcher:
         }
         
         try:
-            response = requests.get(self.base_url, params=params)
+            response = requests.get(self.base_url, params=params, timeout=10)
             response.raise_for_status()
 
             search_results = response.json()
@@ -227,11 +233,11 @@ class WebSearcher:
         }
         
         try:
-            response = requests.get(self.base_url, params=params)
+            response = requests.get(self.base_url, params=params, timeout=10)
             response.raise_for_status()
-            
+
             search_results = response.json()
-            
+
             results = []
             if 'news_results' in search_results:
                 for result in search_results['news_results']:

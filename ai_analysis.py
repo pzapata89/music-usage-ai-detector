@@ -232,11 +232,13 @@ Responde en formato JSON:
         
         # Si no hay categoría, usar IA para clasificar
         try:
+            safe_title = self._sanitize_for_prompt(title, 200)
+            safe_desc = self._sanitize_for_prompt(description, 400)
             prompt = f"""
 Analiza este contenido y determina el nivel de riesgo comercial para uso no autorizado de música:
 
-Título: {title}
-Descripción: {description}
+Título: {safe_title}
+Descripción: {safe_desc}
 
 Evalúa si indica:
 - Uso comercial directo (alto riesgo)

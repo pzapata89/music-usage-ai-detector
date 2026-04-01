@@ -19,6 +19,12 @@ from config import config
 
 logger = logging.getLogger(__name__)
 
+
+def _safe_log(text: str) -> str:
+    """Strip newlines to prevent log injection."""
+    return str(text).replace('\n', ' ').replace('\r', ' ')
+
+
 _SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 _SPOTIFY_SEARCH_URL = "https://api.spotify.com/v1/search"
 
@@ -51,6 +57,7 @@ class SpotifyClient:
             _SPOTIFY_TOKEN_URL,
             headers={"Authorization": f"Basic {encoded}"},
             data={"grant_type": "client_credentials"},
+            timeout=10,
         )
         response.raise_for_status()
         data = response.json()
@@ -65,6 +72,7 @@ class SpotifyClient:
             _SPOTIFY_SEARCH_URL,
             headers={"Authorization": f"Bearer {token}"},
             params={"q": query, "type": "track", "limit": limit},
+            timeout=10,
         )
         response.raise_for_status()
         items = response.json().get("tracks", {}).get("items", [])
@@ -135,20 +143,20 @@ def get_song_metadata(user_input: str) -> List[SongCandidate]:
         Exception: Si tanto Spotify como OpenAI fallan.
     """
     global _spotify_client
-    logger.info(f"Búsqueda rápida iniciada: '{user_input}'")
+    logger.info(f"Búsqueda rápida iniciada: '{_safe_log(user_input)}'")
 
     try:
         if _spotify_client is None:
             _spotify_client = SpotifyClient()
         candidates = _spotify_client.search_tracks(user_input, limit=3)
         if candidates:
-            logger.info(f"Spotify identificó {len(candidates)} candidato(s) para '{user_input}'")
+            logger.info(f"Spotify identificó {len(candidates)} candidato(s) para '{_safe_log(user_input)}'")
             return candidates
         logger.warning(
-            f"Spotify retornó 0 resultados para '{user_input}', usando fallback OpenAI"
+            f"Spotify retornó 0 resultados para '{_safe_log(user_input)}', usando fallback OpenAI"
         )
     except Exception as e:
-        logger.warning(f"Spotify falló para '{user_input}': {e}, usando fallback OpenAI")
+        logger.warning(f"Spotify falló para '{_safe_log(user_input)}': {e}, usando fallback OpenAI")
 
     candidates = _openai_fallback(user_input)
     if not candidates:

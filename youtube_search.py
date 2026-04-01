@@ -15,6 +15,12 @@ from config import config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+def _safe_log(text: str) -> str:
+    """Strip newlines to prevent log injection."""
+    return str(text).replace('\n', ' ').replace('\r', ' ')
+
+
 class YouTubeSearcher:
     """YouTube API wrapper for searching videos."""
     
@@ -66,12 +72,12 @@ class YouTubeSearcher:
         seen_video_ids: Set[str] = set()
         seen_titles: Set[str] = set()
         
-        logger.info(f"Starting multi-query YouTube search for '{song_name}' by '{artist_name}'")
+        logger.info(f"Starting multi-query YouTube search for '{_safe_log(song_name)}' by '{_safe_log(artist_name)}'")
         logger.info(f"Will execute {len(query_variations)} query variations")
         
         for query_index, query in enumerate(query_variations, 1):
             try:
-                logger.info(f"Query {query_index}/{len(query_variations)}: {query}")
+                logger.info(f"Query {query_index}/{len(query_variations)}: {_safe_log(query)}")
                 
                 # Fetch results for this query with pagination
                 query_results = self._fetch_query_results(query, max_per_query=50)

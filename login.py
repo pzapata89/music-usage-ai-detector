@@ -4,8 +4,12 @@ Gestiona el login usando credenciales almacenadas en secrets/env.
 """
 
 import hashlib
+import time
 import streamlit as st
 from config import config
+
+MAX_LOGIN_ATTEMPTS = 5
+LOCKOUT_SECONDS = 60
 
 
 def _hash_password(password: str) -> str:
@@ -20,15 +24,24 @@ def _hash_password(password: str) -> str:
 
 def check_credentials(username: str, password: str) -> bool:
     expected_hash = config.login_users.get(username)
+    # Always compute hash to prevent timing-based username enumeration
+    computed_hash = _hash_password(password)
     if not expected_hash:
         return False
-    return _hash_password(password) == expected_hash
+    return computed_hash == expected_hash
 
 
 def show_login():
     """Muestra el formulario de login. Retorna True si el usuario está autenticado."""
     if st.session_state.get('authenticated'):
         return True
+
+    # Check lockout before showing the form
+    lockout_until = st.session_state.get('login_lockout_until', 0)
+    if lockout_until and time.time() < lockout_until:
+        remaining = int(lockout_until - time.time())
+        st.error(f"Demasiados intentos fallidos. Intenta de nuevo en {remaining} segundos.")
+        return False
 
     st.markdown("""
     <div style="max-width: 400px; margin: 80px auto 0 auto;">
@@ -52,9 +65,18 @@ def show_login():
         if check_credentials(username.strip(), password):
             st.session_state['authenticated'] = True
             st.session_state['username'] = username.strip()
+            st.session_state['login_attempts'] = 0
+            st.session_state['login_lockout_until'] = 0
             st.rerun()
         else:
-            st.error("Usuario o contraseña incorrectos.")
+            attempts = st.session_state.get('login_attempts', 0) + 1
+            st.session_state['login_attempts'] = attempts
+            if attempts >= MAX_LOGIN_ATTEMPTS:
+                st.session_state['login_lockout_until'] = time.time() + LOCKOUT_SECONDS
+                st.error(f"Demasiados intentos fallidos. Bloqueado por {LOCKOUT_SECONDS} segundos.")
+            else:
+                remaining_attempts = MAX_LOGIN_ATTEMPTS - attempts
+                st.error(f"Usuario o contraseña incorrectos. {remaining_attempts} intento(s) restante(s).")
 
     return st.session_state.get('authenticated', False)
 

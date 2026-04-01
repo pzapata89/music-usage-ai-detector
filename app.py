@@ -486,7 +486,7 @@ def perform_search(song_name: str, artist_name: str):
         return True
         
     except Exception as e:
-        st.error(f"❌ Error durante la búsqueda: {str(e)}")
+        st.error("❌ Error durante la búsqueda. Por favor intenta de nuevo.")
         logger.error(f"Error de búsqueda: {e}")
         return False
 
